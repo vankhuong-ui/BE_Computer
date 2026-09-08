@@ -1,0 +1,137 @@
+package com.example.MyProject.AUTH.service.impl;
+
+
+import com.example.MyProject.AUTH.dto.auth.request.AccountRequest;
+import com.example.MyProject.AUTH.dto.auth.response.AccountResponse;
+import com.example.MyProject.AUTH.entity.Account;
+import com.example.MyProject.AUTH.mapper.AccountMapper;
+import com.example.MyProject.AUTH.repository.AccountRepository;
+import com.example.MyProject.AUTH.security.custom.CustomOAuth2UserService;
+import com.example.MyProject.AUTH.security.service.EmailVerificationService;
+import com.example.MyProject.AUTH.service.AccountService;
+import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.Page;
+
+import org.springframework.data.domain.Pageable;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.security.crypto.password.PasswordEncoder;
+import org.springframework.security.oauth2.core.user.OAuth2User;
+import org.springframework.stereotype.Service;
+
+import java.util.ArrayList;
+import java.util.List;
+
+@Service
+@RequiredArgsConstructor
+public class IAccountService implements AccountService {
+    private final AccountRepository accountRepository;
+    private final AccountMapper accountMapper;
+    private final PasswordEncoder passwordEncoder;
+    private final EmailVerificationService emailVerificationService;
+
+    @Override
+    public void create(AccountRequest rq) {
+        Account ac = accountMapper.toEntity(rq);
+        boolean checkgmail = accountRepository.existsBygmail(ac.getGmail());
+        if (checkgmail == true) {
+            throw new RuntimeException("Tài khoản đã tồn tại");
+        }
+        ac.setPassword(passwordEncoder.encode(rq.password()));
+        ac.setEnabled(false);
+        ac.setRole("USER");
+        accountRepository.save(ac);
+    }
+
+    @Override
+    public void changeAccountStatus(Long id, Boolean enabled) {
+        Account account = accountRepository.findById(id).orElseThrow(() -> new RuntimeException("Account not found"));
+        account.setEnabled(enabled);
+        accountRepository.save(account);
+    }
+
+
+    @Override
+    public Page<AccountResponse> listAccount(Pageable page) {
+//        List<AccountResponse> accountResponses = new ArrayList<>();
+//        List<Account> accounts = accountRepository.findAll();
+//        for (Account ac : accounts) {
+//            AccountResponse rq = accountMapper.toResponse(ac);
+//            accountResponses.add(rq);
+//        }
+//        return accountResponses;
+        Page<Account> accountPage = accountRepository.findAll(page);
+        return accountPage.map(accountMapper::toResponse);
+    }
+
+    @Override
+    public List<AccountResponse> searchByEmail(String accountname, String email) {
+        List<Account> list = accountRepository.findByGmailOrAccountname(email, accountname);
+        if (list.size() == 0) {
+            throw new RuntimeException("User not exist");
+        }
+        List<AccountResponse> listrq = new ArrayList<>();
+        for (Account ac : list) {
+            AccountResponse rq = accountMapper.toResponse(ac);
+            listrq.add(rq);
+        }
+
+        return listrq;
+    }
+
+    @Override
+    public void setGGPassword(String password, String newPassword) {
+
+        Authentication authentication =
+                SecurityContextHolder.getContext().getAuthentication();
+
+        String gmail = authentication.getName();
+
+        Account account = accountRepository.findBygmail(gmail)
+                .orElseThrow(() -> new RuntimeException("Tài khoản không tồn tại"));
+        if(account.getPassword()==null){
+            account.setPassword(passwordEncoder.encode(newPassword));
+            accountRepository.save(account);
+        }else {
+            if(!passwordEncoder.matches(password, account.getPassword())){
+                throw new RuntimeException("Password is false");
+            }
+            account.setPassword(passwordEncoder.encode(newPassword));
+            accountRepository.save(account);
+        }
+    }
+
+    @Override
+    public void seenGmail(String gmail) {
+        emailVerificationService.sendOtp(gmail);
+    }
+
+    @Override
+    public void checkCode(String gamil, String code) {
+        if (emailVerificationService.verifyOtp(gamil, code) == true) {
+            Account account = accountRepository.findBygmail(gamil).orElseThrow(() -> new RuntimeException("account not found"));
+            account.setEnabled(true);
+            accountRepository.save(account);
+        }else {
+            throw new RuntimeException("Code is false");
+        }
+    }
+
+    @Override
+    public void saveNewPasswrod(String gmail,String code,String newPasswrod) {
+        if (emailVerificationService.verifyOtp(gmail, code) == true) {
+            Account account = accountRepository.findBygmail(gmail).orElseThrow(() -> new RuntimeException("account not found"));
+            account.setPassword(passwordEncoder.encode(newPasswrod));
+            accountRepository.save(account);
+        }else {
+            throw new RuntimeException("Code is false");
+        }
+    }
+    public boolean hasPassword() {
+        Account account = (Account) SecurityContextHolder.getContext().getAuthentication().getPrincipal();
+        Account fullAccount = accountRepository.findById(account.getId())
+                .orElseThrow(() -> new RuntimeException("Tài khoản không tồn tại"));
+        // Kiểm tra password có null hoặc rỗng không
+        return fullAccount.getPassword() != null && !fullAccount.getPassword().isEmpty();
+    }
+}
