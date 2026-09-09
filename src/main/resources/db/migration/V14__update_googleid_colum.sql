@@ -1,2 +1,2 @@
 ALTER TABLE account
-    ADD googleid NVARCHAR(255);
+    ADD COLUMN googleid VARCHAR(255);

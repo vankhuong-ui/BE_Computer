@@ -34,19 +34,71 @@ public class OAuth2SuccessHandler implements AuthenticationSuccessHandler {
                 (OAuth2User) authentication.getPrincipal();
 
         String googleId = oauth2User.getAttribute("sub");
+        String email = oauth2User.getAttribute("email");
 
         if (googleId == null || googleId.isBlank()) {
             throw new RuntimeException("Không lấy được Google ID");
         }
 
+        if (email == null || email.isBlank()) {
+            throw new RuntimeException("Không lấy được Gmail");
+        }
+
         // ==============================
-        // TÌM ACCOUNT
+        // TÌM ACCOUNT BẰNG GOOGLE ID
         // ==============================
 
         Account account = accountRepository
                 .findByGoogleid(googleId)
-                .orElseThrow(() ->
-                        new RuntimeException("Account không tồn tại"));
+                .orElse(null);
+
+        // ==============================
+        // NẾU CHƯA CÓ -> TÌM BẰNG GMAIL
+        // ==============================
+
+        if (account == null) {
+
+            account = accountRepository
+                    .findBygmail(email)
+                    .orElse(null);
+        }
+
+        // ==============================
+        // NẾU VẪN CHƯA CÓ -> TẠO ACCOUNT
+        // ==============================
+
+        if (account == null) {
+
+            account = new Account();
+
+            account.setGmail(email);
+
+            String name = oauth2User.getAttribute("name");
+
+            account.setAccountname(
+                    name != null && !name.isBlank()
+                            ? name
+                            : email
+            );
+
+            account.setGoogleid(googleId);
+            account.setRole("USER");
+            account.setEnabled(true);
+            account.setPassword(null);
+
+            account = accountRepository.save(account);
+
+        } else {
+
+            // Nếu account tồn tại nhưng chưa có Google ID
+            if (account.getGoogleid() == null
+                    || account.getGoogleid().isBlank()) {
+
+                account.setGoogleid(googleId);
+
+                accountRepository.save(account);
+            }
+        }
 
         // ==============================
         // TẠO ACCESS TOKEN
@@ -63,7 +115,7 @@ public class OAuth2SuccessHandler implements AuthenticationSuccessHandler {
                 refreshTokenService.createRefreshToken(account.getId());
 
         // ==============================
-        // SET REFRESH TOKEN COOKIE
+        // COOKIE
         // ==============================
 
         ResponseCookie cookie =
@@ -72,9 +124,8 @@ public class OAuth2SuccessHandler implements AuthenticationSuccessHandler {
                                 refreshToken.getToken()
                         )
                         .httpOnly(true)
-                        .secure(false)       // localhost HTTP
+                        .secure(false)
                         .path("/")
-                        .domain("localhost")
                         .maxAge(7 * 24 * 60 * 60)
                         .sameSite("Lax")
                         .build();
@@ -92,6 +143,7 @@ public class OAuth2SuccessHandler implements AuthenticationSuccessHandler {
         System.out.println("GOOGLE LOGIN SUCCESS");
         System.out.println("Account ID: " + account.getId());
         System.out.println("Gmail: " + account.getGmail());
+        System.out.println("Google ID: " + account.getGoogleid());
         System.out.println("Role: " + account.getRole());
         System.out.println("AccessToken created");
         System.out.println("RefreshToken created");

@@ -1,8 +1,8 @@
-create table account(
-    id BIGINT IDENTITY(1,1) PRIMARY KEY ,
-    accountname nvarchar(100) not null,
-    gmail nvarchar(255),
-    password nvarchar(255) not null ,
-    enabled BIT NOT NULL ,
-    role nvarchar(50)
-)
+CREATE TABLE account (
+                         id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+                         accountname VARCHAR(100) NOT NULL,
+                         gmail VARCHAR(255),
+                         password VARCHAR(255) NOT NULL,
+                         enabled BOOLEAN NOT NULL,
+                         role VARCHAR(50)
+);
