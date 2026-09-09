@@ -124,10 +124,10 @@ public class OAuth2SuccessHandler implements AuthenticationSuccessHandler {
                                 refreshToken.getToken()
                         )
                         .httpOnly(true)
-                        .secure(false)
+                        .secure(true)
                         .path("/")
                         .maxAge(7 * 24 * 60 * 60)
-                        .sameSite("Lax")
+                        .sameSite("None")
                         .build();
 
         response.addHeader(

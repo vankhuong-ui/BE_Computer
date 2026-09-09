@@ -100,11 +100,10 @@ public class AccountController extends BaseController {
         // Dùng ResponseCookie để set SameSite và domain rõ ràng
         ResponseCookie cookie = ResponseCookie.from("refreshToken", refreshToken.getToken())
                 .httpOnly(true)
-                .secure(false)   // dev HTTP
+                .secure(true)
                 .path("/")
-                .domain("localhost")   // cố định domain là localhost
                 .maxAge(7 * 24 * 60 * 60)
-                .sameSite("Lax")
+                .sameSite("None")
                 .build();
 
         response.addHeader("Set-Cookie", cookie.toString());
@@ -172,11 +171,10 @@ public class AccountController extends BaseController {
 
         ResponseCookie deleteCookie = ResponseCookie.from("refreshToken", "")
                 .httpOnly(true)
-                .secure(false)
+                .secure(true)
                 .path("/")
-                .domain("localhost")
                 .maxAge(0)
-                .sameSite("Lax")
+                .sameSite("None")
                 .build();
         response.addHeader("Set-Cookie", deleteCookie.toString());
 
@@ -220,11 +218,10 @@ public class AccountController extends BaseController {
 
         ResponseCookie cookie = ResponseCookie.from("refreshToken", refreshToken.getToken())
                 .httpOnly(true)
-                .secure(false)
+                .secure(true)
                 .path("/")
-                .domain("localhost")
                 .maxAge(7 * 24 * 60 * 60)
-                .sameSite("Lax")
+                .sameSite("None")
                 .build();
 
         response.addHeader("Set-Cookie", cookie.toString());
