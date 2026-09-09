@@ -25,7 +25,9 @@ import java.nio.charset.StandardCharsets;
 import java.text.SimpleDateFormat;
 import java.time.LocalDateTime;
 import java.util.*;
-
+import java.time.ZoneId;
+import java.time.ZonedDateTime;
+import java.time.format.DateTimeFormatter;
 @Service
 @RequiredArgsConstructor
 public class IPaymentService implements PaymentService {
@@ -67,12 +69,15 @@ public class IPaymentService implements PaymentService {
         vnp_Params.put("vnp_ReturnUrl", vnPayConfig.getVnpReturnUrl());
         vnp_Params.put("vnp_IpAddr", VNPayConfig.getIpAddress(request));
 
-        Calendar cld = Calendar.getInstance(TimeZone.getTimeZone("Etc/GMT+7"));
-        SimpleDateFormat formatter = new SimpleDateFormat("yyyyMMddHHmmss");
-        vnp_Params.put("vnp_CreateDate", formatter.format(cld.getTime()));
+        ZonedDateTime now = ZonedDateTime.now(
+                ZoneId.of("Asia/Ho_Chi_Minh")
+        );
 
-        cld.add(Calendar.MINUTE, 15);
-        vnp_Params.put("vnp_ExpireDate", formatter.format(cld.getTime()));
+        DateTimeFormatter formatter =
+                DateTimeFormatter.ofPattern("yyyyMMddHHmmss");
+
+        vnp_Params.put("vnp_CreateDate", now.format(formatter));
+        vnp_Params.put("vnp_ExpireDate", now.plusMinutes(15).format(formatter));
 
         List<String> fieldNames = new ArrayList<>(vnp_Params.keySet());
         Collections.sort(fieldNames);
