@@ -154,7 +154,7 @@ public class OAuth2SuccessHandler implements AuthenticationSuccessHandler {
         // ==============================
 
         String redirectUrl =
-                "http://localhost:5500/trangchu.html"
+                "https://hoang89computer.vercel.app/trangchu.html"
                         + "#accessToken="
                         + accessToken;
 
