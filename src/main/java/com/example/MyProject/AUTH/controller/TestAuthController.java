@@ -11,18 +11,12 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 @RestController
-@RequestMapping("/api/v1/auth")
+@RequestMapping("/api/online")
 public class TestAuthController {
 
-//    @Autowired
-//    private JwtService jwtService;
-//
-//    @Autowired
-//    private UserDetailsService userDetailsService;
-//
-//    @GetMapping("/token")
-//    public String getToken() {
-//        UserDetails user = userDetailsService.loadUserByUsername("admin");
-//        return jwtService.generateToken(user);
-//    }
+
+    @GetMapping
+    public String online() {
+        return "OK";
+    }
 }

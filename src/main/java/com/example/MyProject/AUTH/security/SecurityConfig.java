@@ -118,7 +118,8 @@ public class SecurityConfig {
                                 "/api/products/*/product_brands",
                                 "/api/products/*/product_categories",
                                 "/api/products/*/*/product_categories_brands",
-                                "/api/chat"
+                                "/api/chat",
+                                "/api/online"
                         ).permitAll()
 
                         // --------------------------------
