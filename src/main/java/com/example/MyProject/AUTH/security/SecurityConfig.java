@@ -119,7 +119,8 @@ public class SecurityConfig {
                                 "/api/products/*/product_categories",
                                 "/api/products/*/*/product_categories_brands",
                                 "/api/chat",
-                                "/api/online"
+                                "/api/online",
+                                "/api/payment/sepay-webhook"
                         ).permitAll()
 
                         // --------------------------------

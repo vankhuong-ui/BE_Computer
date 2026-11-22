@@ -17,4 +17,7 @@ public interface PaymentRepository extends JpaRepository<Payment, Long> {
 
     // Lấy 1 giao dịch mới nhất gần đây nhất của đơn hàng (SQL tự ORDER BY created_at DESC LIMIT 1)
     Optional<Payment> findFirstByOrderIdOrderByCreatedAtDesc(Long orderId);
+
+    // Kiểm tra giao dịch đã xử lý chưa (Idempotency cho Webhook SePay)
+    boolean existsByTransactionId(String transactionId);
 }

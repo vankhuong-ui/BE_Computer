@@ -1,8 +1,11 @@
 package com.example.MyProject.ORDER.service.impl;
 
 import com.example.MyProject.AUTH.entity.Account;
+import com.example.MyProject.ORDER.config.SePayConfig;
 import com.example.MyProject.ORDER.config.VNPayConfig;
 import com.example.MyProject.ORDER.dto.payment.PaymentResponse;
+import com.example.MyProject.ORDER.dto.payment.SePayPaymentInfoResponse;
+import com.example.MyProject.ORDER.dto.payment.SePayWebhookRequest;
 import com.example.MyProject.ORDER.dto.payment.VerifyPaymentRequest;
 import com.example.MyProject.ORDER.entity.Orders;
 import com.example.MyProject.ORDER.entity.Payment;
@@ -15,6 +18,7 @@ import jakarta.servlet.http.HttpServletRequest;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
+import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -22,9 +26,10 @@ import org.springframework.transaction.annotation.Transactional;
 import java.math.BigDecimal;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
-import java.text.SimpleDateFormat;
 import java.time.LocalDateTime;
 import java.util.*;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import java.time.ZoneId;
 import java.time.ZonedDateTime;
 import java.time.format.DateTimeFormatter;
@@ -36,7 +41,9 @@ public class IPaymentService implements PaymentService {
     private final PaymentRepository paymentRepository;
     private final PaymentMapper paymentMapper;
     private final VNPayConfig vnPayConfig;
+    private final SePayConfig sePayConfig;
     private final OrdersService ordersService;
+    private final SimpMessagingTemplate messagingTemplate;
 
     @Override
     public String createVNPayPayment(Long orderId, HttpServletRequest request) {
@@ -181,6 +188,142 @@ public class IPaymentService implements PaymentService {
 
         Payment savedPayment = paymentRepository.save(payment);
         return paymentMapper.toResponse(savedPayment);
+    }
+
+    @Transactional(readOnly = true)
+    @Override
+    public SePayPaymentInfoResponse createSePayPayment(Long orderId) {
+        Account account = (Account) SecurityContextHolder.getContext().getAuthentication().getPrincipal();
+
+        Orders order = ordersRepository.findByIdAndUseraddressesAccountId(orderId, account.getId())
+                .orElseThrow(() -> new RuntimeException("Đơn hàng không tồn tại hoặc không thuộc tài khoản của bạn"));
+
+        if ("COMPLETED".equals(order.getStatus())) {
+            throw new RuntimeException("Đơn hàng này đã được thanh toán thành công");
+        } else if ("CANCELLED".equals(order.getStatus())) {
+            throw new RuntimeException("Đơn hàng này đã bị hủy");
+        }
+
+        String prefix = sePayConfig.getPaymentPrefix() != null && !sePayConfig.getPaymentPrefix().isBlank()
+                ? sePayConfig.getPaymentPrefix().trim().toUpperCase()
+                : "DH";
+        String transferContent = prefix + order.getId();
+        long amount = order.getTotalAmount().longValue();
+
+        String qrUrl = String.format(
+                "https://qr.sepay.vn/img?acc=%s&bank=%s&amount=%d&des=%s&template=compact",
+                URLEncoder.encode(sePayConfig.getAccountNumber(), StandardCharsets.UTF_8),
+                URLEncoder.encode(sePayConfig.getBankName(), StandardCharsets.UTF_8),
+                amount,
+                URLEncoder.encode(transferContent, StandardCharsets.UTF_8)
+        );
+
+        return new SePayPaymentInfoResponse(
+                order.getId(),
+                order.getTotalAmount(),
+                sePayConfig.getBankName(),
+                sePayConfig.getAccountNumber(),
+                sePayConfig.getAccountName(),
+                transferContent,
+                qrUrl,
+                order.getStatus()
+        );
+    }
+
+    @Transactional
+    @Override
+    public PaymentResponse processSePayWebhook(SePayWebhookRequest webhookRequest, String authHeader) {
+        // 1. Kiểm tra API Key nếu đã cấu hình trong .env
+        String expectedApiKey = sePayConfig.getWebhookApiKey();
+        if (expectedApiKey != null && !expectedApiKey.isBlank()) {
+            String expectedHeader = "Apikey " + expectedApiKey.trim();
+            if (authHeader == null || (!authHeader.trim().equals(expectedHeader) && !authHeader.trim().equals(expectedApiKey.trim()))) {
+                throw new SecurityException("Invalid SePay Webhook API Key");
+            }
+        }
+
+        if (webhookRequest == null) {
+            throw new IllegalArgumentException("Webhook payload cannot be null");
+        }
+
+        // 2. Chỉ xử lý giao dịch tiền vào ("in")
+        if (webhookRequest.transferType() != null && !"in".equalsIgnoreCase(webhookRequest.transferType())) {
+            throw new IllegalArgumentException("Ignored non-incoming transaction");
+        }
+
+        // 3. Kiểm tra trùng lặp giao dịch (Idempotency)
+        String txId = webhookRequest.id() != null
+                ? "SEPAY_" + webhookRequest.id()
+                : (webhookRequest.referenceCode() != null ? webhookRequest.referenceCode() : "SEPAY_" + System.currentTimeMillis());
+
+        if (paymentRepository.existsByTransactionId(txId)) {
+            Long existingOrderId = extractOrderIdFromContent(webhookRequest.code(), webhookRequest.content());
+            if (existingOrderId != null) {
+                return paymentRepository.findFirstByOrderIdOrderByCreatedAtDesc(existingOrderId)
+                        .map(paymentMapper::toResponse)
+                        .orElse(null);
+            }
+            return null;
+        }
+
+        // 4. Bóc tách mã đơn hàng (orderId) từ code hoặc content
+        Long orderId = extractOrderIdFromContent(webhookRequest.code(), webhookRequest.content());
+        if (orderId == null) {
+            throw new IllegalArgumentException("Không tìm thấy mã đơn hàng trong nội dung chuyển khoản");
+        }
+
+        Orders order = ordersRepository.findById(orderId)
+                .orElseThrow(() -> new RuntimeException("Đơn hàng không tồn tại: " + orderId));
+
+        BigDecimal transferAmount = webhookRequest.transferAmount() != null ? webhookRequest.transferAmount() : BigDecimal.ZERO;
+        boolean isAmountEnough = transferAmount.compareTo(order.getTotalAmount()) >= 0;
+
+        if (isAmountEnough && !"COMPLETED".equals(order.getStatus())) {
+            order.setStatus("COMPLETED");
+            ordersRepository.save(order);
+        }
+
+        Payment payment = Payment.builder()
+                .order(order)
+                .transactionId(txId)
+                .paymentGateway("SEPAY")
+                .amount(transferAmount)
+                .status(isAmountEnough ? "SUCCESS" : "FAILED")
+                .responseCode(isAmountEnough ? "00" : "AMOUNT_MISMATCH")
+                .createdAt(LocalDateTime.now())
+                .build();
+
+        Payment savedPayment = paymentRepository.save(payment);
+        PaymentResponse response = paymentMapper.toResponse(savedPayment);
+
+        // 5. Gửi thông báo real-time qua WebSocket cho Frontend
+        try {
+            messagingTemplate.convertAndSend("/topic/payment/" + order.getId(), response);
+        } catch (Exception ignored) {
+        }
+
+        return response;
+    }
+
+    private Long extractOrderIdFromContent(String code, String content) {
+        String prefix = sePayConfig.getPaymentPrefix() != null && !sePayConfig.getPaymentPrefix().isBlank()
+                ? sePayConfig.getPaymentPrefix().trim()
+                : "DH";
+        Pattern pattern = Pattern.compile(Pattern.quote(prefix) + "\\s*(\\d+)", Pattern.CASE_INSENSITIVE);
+
+        if (code != null && !code.isBlank()) {
+            Matcher m = pattern.matcher(code);
+            if (m.find()) {
+                return Long.parseLong(m.group(1));
+            }
+        }
+        if (content != null && !content.isBlank()) {
+            Matcher m = pattern.matcher(content);
+            if (m.find()) {
+                return Long.parseLong(m.group(1));
+            }
+        }
+        return null;
     }
 
     @Transactional(readOnly = true)
