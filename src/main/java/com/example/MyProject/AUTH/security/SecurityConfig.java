@@ -121,7 +121,8 @@ public class SecurityConfig {
                                 "/api/chat",
                                 "/api/online",
                                 "/api/payment/sepay-webhook",
-                                "/api/warranty/lookup"
+                                "/api/warranty/lookup",
+                                "/api/repairs"
                         ).permitAll()
 
                         // --------------------------------
