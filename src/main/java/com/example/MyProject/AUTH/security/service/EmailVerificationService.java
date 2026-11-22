@@ -56,7 +56,7 @@ public class EmailVerificationService {
                 {
                   "sender": {
                     "email": "%s",
-                    "name": "Hoang89Computer"
+                    "name": "HK COMPUTER"
                   },
                   "to": [
                     {

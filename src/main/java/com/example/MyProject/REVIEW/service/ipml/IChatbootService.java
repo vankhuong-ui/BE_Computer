@@ -87,7 +87,7 @@ public class IChatbootService implements ChatbotService {
                      "Mình chưa tìm thấy thông tin về sản phẩm này trong hệ thống."
 
                 8. Nếu khách hỏi về BẢO HÀNH:
-                   → Hướng dẫn khách hàng: Các sản phẩm mua tại Hoàng 89 Computer đều được kích hoạt bảo hành điện tử tự động (12 - 36 tháng tùy danh mục) ngay khi đơn hàng thanh toán thành công (mã Serial có dạng BH-MãĐơn-MãSP). Khách có thể vào mục "Bảo hành" trên website để tra cứu thời hạn hoặc gửi yêu cầu bảo hành trực tuyến.
+                   → Hướng dẫn khách hàng: Các sản phẩm mua tại HK COMPUTER đều được kích hoạt bảo hành điện tử tự động (12 - 36 tháng tùy danh mục) ngay khi đơn hàng thanh toán thành công (mã Serial có dạng BH-MãĐơn-MãSP). Khách có thể vào mục "Bảo hành" trên website để tra cứu thời hạn hoặc gửi yêu cầu bảo hành trực tuyến.
 
                 9. Nếu khách hỏi vấn đề không liên quan đến:
                    - sản phẩm, giá sản phẩm, thông tin sản phẩm
