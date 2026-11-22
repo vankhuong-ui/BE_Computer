@@ -44,7 +44,7 @@ public class IPaymentService implements PaymentService {
 
         Orders order = ordersRepository.findByIdAndUseraddressesAccountId(orderId, account.getId())
                 .orElseThrow(() -> new RuntimeException("Đơn hàng không tồn tại hoặc không thuộc tài khoản của bạn"));
-        if (account.getId() != order.getUseraddresses().getAccount().getId()) {
+        if (!Objects.equals(account.getId(), order.getUseraddresses().getAccount().getId())) {
             throw new RuntimeException("Đơn hàng này ko thuộc về bạn vì vậy bạn ko thể thanh toán");
         }
         if ("COMPLETED".equals(order.getStatus())) {
@@ -197,6 +197,11 @@ public class IPaymentService implements PaymentService {
     @Transactional(readOnly = true)
     @Override
     public PaymentResponse getLatestPaymentByOrderId(Long orderId) {
+        Account account = (Account) SecurityContextHolder.getContext().getAuthentication().getPrincipal();
+        if (!"ADMIN".equalsIgnoreCase(account.getRole()) && !"ROLE_ADMIN".equalsIgnoreCase(account.getRole())) {
+            ordersRepository.findByIdAndUseraddressesAccountId(orderId, account.getId())
+                    .orElseThrow(() -> new RuntimeException("Đơn hàng không tồn tại hoặc không thuộc tài khoản của bạn"));
+        }
         return paymentRepository.findFirstByOrderIdOrderByCreatedAtDesc(orderId)
                 .map(paymentMapper::toResponse)
                 .orElseThrow(() -> new RuntimeException("Chưa có thông tin giao dịch cho đơn hàng này"));

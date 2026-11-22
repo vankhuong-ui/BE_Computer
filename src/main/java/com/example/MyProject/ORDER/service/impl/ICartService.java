@@ -232,43 +232,32 @@ public class ICartService implements CartService {
     private List<CartResponse> convertRedisCart(
             Map<Object, Object> redisCart
     ) {
+        Account account = getCurrentAccount();
+
+        // Lấy toàn bộ Cart của user trong 1 query có JOIN FETCH để tránh lỗi N+1
+        List<Cart> userCarts = cartRepository.findByAccountId(account.getId());
+        Map<Long, Cart> cartByProductId = userCarts.stream()
+                .collect(java.util.stream.Collectors.toMap(
+                        c -> c.getProducts().getId(),
+                        c -> c,
+                        (existing, replacement) -> existing
+                ));
 
         List<CartResponse> result = new ArrayList<>();
 
-        for (Map.Entry<Object, Object> entry :
-                redisCart.entrySet()) {
+        for (Map.Entry<Object, Object> entry : redisCart.entrySet()) {
+            Long productId = Long.parseLong(entry.getKey().toString());
+            Integer quantity = Integer.parseInt(entry.getValue().toString());
 
-            Long productId =
-                    Long.parseLong(entry.getKey().toString());
-
-            Integer quantity =
-                    Integer.parseInt(entry.getValue().toString());
-
-            Products product =
-                    productRepository.findById(productId)
-                            .orElse(null);
-
-            if (product == null) {
-                continue;
-            }
-
-            // Lấy Cart ID từ DB
-            Account account = getCurrentAccount();
-
-            Cart cart =
-                    cartRepository.findByAccountIdAndProductsId(
-                            account.getId(),
-                            productId
-                    );
-
-            if (cart == null) {
+            Cart cart = cartByProductId.get(productId);
+            if (cart == null || cart.getProducts() == null) {
                 continue;
             }
 
             result.add(
                     new CartResponse(
                             cart.getId(),
-                            productMapper.toReponse(product),
+                            productMapper.toReponse(cart.getProducts()),
                             quantity
                     )
             );

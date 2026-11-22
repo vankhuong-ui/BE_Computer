@@ -34,23 +34,27 @@ public class IReviewService implements ReviewService {
     public void createReview(CreateReviewRequest request) {
         Account account = (Account) SecurityContextHolder.getContext().getAuthentication().getPrincipal();
 
-        // 1. Kiểm tra đơn hàng có tồn tại không
-        Orders order = orderRepository.findById(request.orderId())
-                .orElseThrow(() -> new RuntimeException("Đơn hàng không tồn tại"));
+        // 1. Kiểm tra đơn hàng có tồn tại và thuộc về tài khoản đang đăng nhập không
+        Orders order = orderRepository.findByIdAndAccountIdWithDetails(request.orderId(), account.getId())
+                .orElseThrow(() -> new RuntimeException("Đơn hàng không tồn tại hoặc không thuộc tài khoản của bạn"));
 
-   //     Account account1= (Account) SecurityContextHolder.getContext().getAuthentication().getPrincipal();
-
-
-        // 3. Validation 2: Đơn hàng phải đã thanh toán / hoàn thành (PAID hoặc COMPLETED)
-        if (!"UNPAID".equals(order.getStatus()) && !"COMPLETED".equals(order.getStatus())) {
+        // 2. Đơn hàng phải đã thanh toán / hoàn thành (PAID hoặc COMPLETED)
+        if (!"PAID".equals(order.getStatus()) && !"COMPLETED".equals(order.getStatus())) {
             throw new RuntimeException("Chỉ được đánh giá sản phẩm sau khi đơn hàng đã thanh toán thành công");
+        }
+
+        // 3. Kiểm tra sản phẩm có nằm trong đơn hàng này không
+        boolean productInOrder = order.getOrderItems() != null && order.getOrderItems().stream()
+                .anyMatch(item -> item.getProducts() != null && item.getProducts().getId().equals(request.productId()));
+        if (!productInOrder) {
+            throw new RuntimeException("Sản phẩm không nằm trong đơn hàng này");
         }
 
         // 4. Kiểm tra sản phẩm có tồn tại không
         Products product = productRepository.findById(request.productId())
                 .orElseThrow(() -> new RuntimeException("Sản phẩm không tồn tại"));
 
-        // 5. Validation 3: Tránh việc 1 sản phẩm trong 1 đơn hàng bị đánh giá lại nhiều lần
+        // 5. Tránh việc 1 sản phẩm trong 1 đơn hàng bị đánh giá lại nhiều lần
         if (reviewRepository.existsByOrderIdAndProductId(request.orderId(), request.productId())) {
             throw new RuntimeException("Sản phẩm trong đơn hàng này đã được đánh giá trước đó");
         }
@@ -59,7 +63,7 @@ public class IReviewService implements ReviewService {
         review.setOrder(order);
         review.setProduct(product);
 
-        Review savedReview = reviewRepository.save(review);
+        reviewRepository.save(review);
     }
 
     @Transactional(readOnly = true)
