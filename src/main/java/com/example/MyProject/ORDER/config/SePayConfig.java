@@ -8,13 +8,13 @@ import org.springframework.context.annotation.Configuration;
 @Getter
 public class SePayConfig {
 
-    @Value("${sepay.bank-name:MBBank}")
+    @Value("${sepay.bank-name:TPBank}")
     private String bankName;
 
-    @Value("${sepay.account-number:0399999999}")
+    @Value("${sepay.account-number:10000731064}")
     private String accountNumber;
 
-    @Value("${sepay.account-name:HOANG 89 COMPUTER}")
+    @Value("${sepay.account-name:DO VAN KHUONG}")
     private String accountName;
 
     @Value("${sepay.webhook-api-key:}")
