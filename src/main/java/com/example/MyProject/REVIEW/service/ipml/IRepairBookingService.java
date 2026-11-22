@@ -34,9 +34,26 @@ public class IRepairBookingService implements RepairBookingService {
         if (request.customerPhone() == null || request.customerPhone().isBlank()) {
             throw new RuntimeException("Vui lòng nhập số điện thoại liên hệ");
         }
-        if (request.branchName() == null || request.branchName().isBlank()) {
-            throw new RuntimeException("Vui lòng chọn chi nhánh tiếp nhận");
+        String method = request.serviceMethod() != null && "AT_HOME".equalsIgnoreCase(request.serviceMethod().trim())
+                ? "AT_HOME"
+                : "AT_STORE";
+
+        String resolvedBranch = request.branchName() != null ? request.branchName().trim() : "";
+        String resolvedHomeAddr = request.homeAddress() != null ? request.homeAddress().trim() : "";
+
+        if ("AT_HOME".equals(method)) {
+            if (resolvedHomeAddr.isBlank()) {
+                throw new RuntimeException("Vui lòng nhập địa chỉ để kỹ thuật viên đến tận nơi");
+            }
+            if (resolvedBranch.isBlank()) {
+                resolvedBranch = "Sửa tại nhà — " + resolvedHomeAddr;
+            }
+        } else {
+            if (resolvedBranch.isBlank()) {
+                throw new RuntimeException("Vui lòng chọn chi nhánh tiếp nhận");
+            }
         }
+
         if (request.deviceModel() == null || request.deviceModel().isBlank()) {
             throw new RuntimeException("Vui lòng nhập tên dòng máy / thiết bị");
         }
@@ -58,7 +75,9 @@ public class IRepairBookingService implements RepairBookingService {
                 .customerEmail(request.customerEmail() != null && !request.customerEmail().isBlank()
                         ? request.customerEmail().trim()
                         : (currentAccount != null ? currentAccount.getGmail() : null))
-                .branchName(request.branchName().trim())
+                .serviceMethod(method)
+                .branchName(resolvedBranch)
+                .homeAddress(resolvedHomeAddr.isBlank() ? null : resolvedHomeAddr)
                 .deviceModel(request.deviceModel().trim())
                 .serviceType(request.serviceType() != null && !request.serviceType().isBlank()
                         ? request.serviceType().trim()
@@ -110,7 +129,9 @@ public class IRepairBookingService implements RepairBookingService {
                 b.getCustomerName(),
                 b.getCustomerPhone(),
                 b.getCustomerEmail(),
+                b.getServiceMethod(),
                 b.getBranchName(),
+                b.getHomeAddress(),
                 b.getDeviceModel(),
                 b.getServiceType(),
                 b.getIssueDescription(),

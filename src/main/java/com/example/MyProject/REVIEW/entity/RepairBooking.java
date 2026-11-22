@@ -37,6 +37,13 @@ public class RepairBooking {
     @Column(name = "branch_name", nullable = false, length = 255)
     private String branchName;
 
+    @Builder.Default
+    @Column(name = "service_method", nullable = false, length = 30)
+    private String serviceMethod = "AT_STORE";
+
+    @Column(name = "home_address", length = 500)
+    private String homeAddress;
+
     @Column(name = "device_model", nullable = false, length = 255)
     private String deviceModel;
 

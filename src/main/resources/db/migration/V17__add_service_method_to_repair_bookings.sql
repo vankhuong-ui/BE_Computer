@@ -1,0 +1,3 @@
+ALTER TABLE repair_bookings
+    ADD COLUMN IF NOT EXISTS service_method VARCHAR(30) NOT NULL DEFAULT 'AT_STORE',
+    ADD COLUMN IF NOT EXISTS home_address VARCHAR(500);
