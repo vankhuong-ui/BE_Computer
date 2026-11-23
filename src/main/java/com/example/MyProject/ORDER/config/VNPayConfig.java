@@ -48,8 +48,13 @@ public class VNPayConfig {
         String ipAddress;
         try {
             ipAddress = request.getHeader("X-FORWARDED-FOR");
-            if (ipAddress == null || ipAddress.isEmpty()) {
+            if (ipAddress != null && !ipAddress.isBlank()) {
+                ipAddress = ipAddress.split(",")[0].trim();
+            } else {
                 ipAddress = request.getRemoteAddr();
+            }
+            if (ipAddress == null || ipAddress.isBlank() || ipAddress.contains(":")) {
+                ipAddress = "127.0.0.1";
             }
         } catch (Exception e) {
             ipAddress = "127.0.0.1";
