@@ -175,7 +175,9 @@ public class SecurityConfig {
         configuration.setAllowedOrigins(List.of(
                 "http://localhost:5500",
                 "http://127.0.0.1:5500",
-                "https://hoang89computer.vercel.app"
+                "https://hoang89computer.vercel.app",
+                "https://vankhuongdev.id.vn",
+                "https://www.vankhuongdev.id.vn"
         ));
 
         configuration.setAllowedMethods(List.of(

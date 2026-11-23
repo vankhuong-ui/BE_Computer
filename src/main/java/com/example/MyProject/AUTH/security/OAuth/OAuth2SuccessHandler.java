@@ -8,6 +8,7 @@ import com.example.MyProject.AUTH.security.service.RefreshTokenService;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import lombok.RequiredArgsConstructor;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.ResponseCookie;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.oauth2.core.user.OAuth2User;
@@ -23,6 +24,9 @@ public class OAuth2SuccessHandler implements AuthenticationSuccessHandler {
     private final AccountRepository accountRepository;
     private final RefreshTokenService refreshTokenService;
     private final JwtService jwtService;
+
+    @Value("${app.frontend-url:https://vankhuongdev.id.vn}")
+    private String frontendUrl;
 
     @Override
     public void onAuthenticationSuccess(
@@ -153,8 +157,11 @@ public class OAuth2SuccessHandler implements AuthenticationSuccessHandler {
         // REDIRECT FRONTEND
         // ==============================
 
+        String baseUrl = frontendUrl.endsWith("/")
+                ? frontendUrl.substring(0, frontendUrl.length() - 1)
+                : frontendUrl;
         String redirectUrl =
-                "https://hoang89computer.vercel.app/trangchu.html"
+                baseUrl + "/trangchu.html"
                         + "#accessToken="
                         + accessToken;
 
