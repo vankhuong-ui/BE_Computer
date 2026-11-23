@@ -5,11 +5,14 @@ FROM eclipse-temurin:21-jdk AS build
 
 WORKDIR /app
 
-COPY . .
+COPY gradlew settings.gradle build.gradle ./
+COPY gradle ./gradle
 
-RUN chmod +x gradlew
+RUN chmod +x gradlew && ./gradlew dependencies --no-daemon
 
-RUN ./gradlew clean bootJar -x test
+COPY src ./src
+
+RUN ./gradlew bootJar -x test --no-daemon
 
 
 # =========================
