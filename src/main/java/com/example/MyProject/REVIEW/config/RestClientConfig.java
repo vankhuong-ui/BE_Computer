@@ -18,10 +18,10 @@ public class RestClientConfig {
         HttpClient httpClient = HttpClient.create()
                 .option(
                         ChannelOption.CONNECT_TIMEOUT_MILLIS,
-                        10000
+                        5000
                 )
                 .responseTimeout(
-                        Duration.ofSeconds(60)
+                        Duration.ofSeconds(15)
                 );
 
         ReactorClientHttpRequestFactory factory =
