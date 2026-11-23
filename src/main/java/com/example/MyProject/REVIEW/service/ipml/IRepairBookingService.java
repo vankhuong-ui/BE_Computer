@@ -1,5 +1,6 @@
 package com.example.MyProject.REVIEW.service.ipml;
 
+import com.example.MyProject.AUTH.common.PhoneValidator;
 import com.example.MyProject.AUTH.entity.Account;
 import com.example.MyProject.REVIEW.dto.repair.RepairBookingRequest;
 import com.example.MyProject.REVIEW.dto.repair.RepairBookingResponse;
@@ -31,9 +32,7 @@ public class IRepairBookingService implements RepairBookingService {
         if (request.customerName() == null || request.customerName().isBlank()) {
             throw new RuntimeException("Vui lòng nhập họ tên khách hàng");
         }
-        if (request.customerPhone() == null || request.customerPhone().isBlank()) {
-            throw new RuntimeException("Vui lòng nhập số điện thoại liên hệ");
-        }
+        String normalizedPhone = PhoneValidator.validateAndNormalize(request.customerPhone());
         String method = request.serviceMethod() != null && "AT_HOME".equalsIgnoreCase(request.serviceMethod().trim())
                 ? "AT_HOME"
                 : "AT_STORE";
@@ -71,7 +70,7 @@ public class IRepairBookingService implements RepairBookingService {
         RepairBooking booking = RepairBooking.builder()
                 .account(currentAccount)
                 .customerName(request.customerName().trim())
-                .customerPhone(request.customerPhone().trim())
+                .customerPhone(normalizedPhone)
                 .customerEmail(request.customerEmail() != null && !request.customerEmail().isBlank()
                         ? request.customerEmail().trim()
                         : (currentAccount != null ? currentAccount.getGmail() : null))

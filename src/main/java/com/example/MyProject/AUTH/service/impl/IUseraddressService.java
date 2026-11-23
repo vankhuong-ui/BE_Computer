@@ -1,5 +1,6 @@
 package com.example.MyProject.AUTH.service.impl;
 
+import com.example.MyProject.AUTH.common.PhoneValidator;
 import com.example.MyProject.AUTH.dto.address.request.UseraddressRequest;
 import com.example.MyProject.AUTH.dto.address.response.UseraddressResponse;
 import com.example.MyProject.AUTH.entity.Account;
@@ -33,7 +34,9 @@ public class IUseraddressService implements UseraddressService {
         if (useraddressList.size() >= 5) {
             throw new RuntimeException("mỗi Account chỉ được đăng kí 10 địa chỉ nhận hàng");
         }
+        String normalizedPhone = PhoneValidator.validateAndNormalize(useraddressRequest.phone());
         Useraddresses useraddresses=useraddressMapper.toEntity(useraddressRequest);
+        useraddresses.setPhone(normalizedPhone);
         useraddresses.setAccount(account);
         useraddressRepository.save(useraddresses);
     }
@@ -41,7 +44,14 @@ public class IUseraddressService implements UseraddressService {
     @Override
     public void updateUseraddress(Long id, UseraddressRequest useraddressRequest) {
         Useraddresses useraddresses = useraddressRepository.findById(id).orElseThrow(() -> new RuntimeException("useraddresses not exitst!"));
+        String normalizedPhone = null;
+        if (useraddressRequest.phone() != null) {
+            normalizedPhone = PhoneValidator.validateAndNormalize(useraddressRequest.phone());
+        }
         useraddressMapper.updateUseraddress(useraddressRequest, useraddresses);
+        if (normalizedPhone != null) {
+            useraddresses.setPhone(normalizedPhone);
+        }
         useraddressRepository.save(useraddresses);
     }
 

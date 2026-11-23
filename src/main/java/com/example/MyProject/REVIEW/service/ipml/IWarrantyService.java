@@ -1,5 +1,6 @@
 package com.example.MyProject.REVIEW.service.ipml;
 
+import com.example.MyProject.AUTH.common.PhoneValidator;
 import com.example.MyProject.AUTH.entity.Account;
 import com.example.MyProject.ORDER.entity.OrderItem;
 import com.example.MyProject.ORDER.entity.Orders;
@@ -106,6 +107,7 @@ public class IWarrantyService implements WarrantyService {
         if (request.description() == null || request.description().isBlank()) {
             throw new RuntimeException("Vui lòng mô tả chi tiết tình trạng lỗi của thiết bị");
         }
+        String normalizedPhone = PhoneValidator.validateAndNormalize(request.contactPhone());
 
         Orders order = ordersRepository.findByIdAndAccountIdWithDetails(request.orderId(), account.getId())
                 .orElseThrow(() -> new RuntimeException("Đơn hàng không tồn tại hoặc không thuộc tài khoản của bạn"));
@@ -146,7 +148,7 @@ public class IWarrantyService implements WarrantyService {
                 .serialCode(serialCode)
                 .issueType(request.issueType() != null && !request.issueType().isBlank() ? request.issueType() : "Lỗi phần cứng / Kỹ thuật")
                 .description(request.description().trim())
-                .contactPhone(request.contactPhone())
+                .contactPhone(normalizedPhone)
                 .status("PENDING")
                 .warrantyMonths(warrantyMonths)
                 .warrantyExpireDate(expireDate)
