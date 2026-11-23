@@ -78,6 +78,8 @@ public class ChatbotGuardrail {
             "system prompt",
             "groq",
             "llama",
+            "qwen",
+            "alibaba",
             "openai",
             "as an ai",
             "toi la mo hinh ngon ngu",

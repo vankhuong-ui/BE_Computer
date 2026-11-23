@@ -84,15 +84,27 @@ class ChatbotHybridTest {
     }
 
     @Test
+    void zeroKeyLocalFallbackAnswersCapabilityQuestionsWithoutSearchingKeywordLam() {
+        ReflectionTestUtils.setField(chatbotService, "groqApiKey", "");
+
+        String reply1 = chatbotService.chat("bạn có thể làm gì");
+        String reply2 = chatbotService.chat("bạn có thể giúp tôi làm những gì");
+
+        assertThat(reply1).contains("HK COMPUTER").doesNotContain("từ khóa \"lam\"");
+        assertThat(reply2).contains("HK COMPUTER").doesNotContain("từ khóa \"lam\"");
+        assertThat(reply1).contains("checkout.html").contains("warranty.html").contains("support.html");
+    }
+
+    @Test
     void zeroKeyLocalFallbackFiltersByKeywordAndPriceRangeAndFormatsVndStock() {
         ReflectionTestUtils.setField(chatbotService, "groqApiKey", "");
 
         Products asusCheap = createProduct(1L, "Laptop Asus Vivobook 15", "Asus", "Laptop",
-                new BigDecimal("15990000"), "i5-13500H / 16GB / 512GB SSD");
+                new BigDecimal("15990000"), "i5-13500H / 16GB / 512GB SSD", "Laptop văn phòng mỏng nhẹ");
         Products asusExpensive = createProduct(2L, "Laptop Asus ROG Strix", "Asus", "Laptop",
-                new BigDecimal("32000000"), "i9 / RTX 4070");
+                new BigDecimal("32000000"), "i9 / RTX 4070", "Laptop gaming");
         Products dellCheap = createProduct(3L, "Laptop Dell Inspiron 15", "Dell", "Laptop",
-                new BigDecimal("17500000"), "i5 / 8GB / 512GB");
+                new BigDecimal("17500000"), "i5 / 8GB / 512GB", "Laptop bền bỉ");
 
         when(productRepository.findAllWithBrandAndCategory())
                 .thenReturn(List.of(asusCheap, asusExpensive, dellCheap));
@@ -104,8 +116,48 @@ class ChatbotHybridTest {
         assertThat(reply).contains("Laptop Asus Vivobook 15");
         assertThat(reply).contains("15.990.000₫");
         assertThat(reply).contains("Còn hàng (7 sản phẩm)");
+        assertThat(reply).contains("detailproductuser.html?id=1");
         assertThat(reply).doesNotContain("Laptop Asus ROG Strix");
         assertThat(reply).doesNotContain("Laptop Dell Inspiron 15");
+    }
+
+    @Test
+    void zeroKeyLocalFallbackRanksMostExpensiveProductFirst() {
+        ReflectionTestUtils.setField(chatbotService, "groqApiKey", "");
+
+        Products cloth = createProduct(11L, "khăn", "HK", "Phụ kiện",
+                new BigDecimal("2000"), "Khăn lau", "mua đi rồi biết");
+        Products screwdriver = createProduct(12L, "tô vít tháo máy", "HK", "Dụng cụ",
+                new BigDecimal("10000"), "Thép cứng", "có thể mở tất cả loại laptop hiện nay");
+
+        when(productRepository.findAllWithBrandAndCategory()).thenReturn(List.of(cloth, screwdriver));
+        when(inventoryRepository.findByProducts_IdIn(anyList()))
+                .thenReturn(List.of(createInventory(cloth, 8), createInventory(screwdriver, 195)));
+
+        String reply = chatbotService.chat("máy bán đắt nhất shop là");
+
+        assertThat(reply).contains("tô vít tháo máy").contains("10.000₫");
+        assertThat(reply.indexOf("tô vít tháo máy")).isLessThan(reply.indexOf("khăn"));
+    }
+
+    @Test
+    void buyAndCheckoutIntentExcludesUnrelatedDescriptionMatchAndProvidesDirectLinks() {
+        ReflectionTestUtils.setField(chatbotService, "groqApiKey", "");
+
+        Products cloth = createProduct(11L, "khăn", "HK", "Phụ kiện",
+                new BigDecimal("2000"), "Khăn lau", "mua đi rồi biết");
+        Products screwdriver = createProduct(12L, "tô vít tháo máy", "HK", "Dụng cụ",
+                new BigDecimal("10000"), "Thép cứng", "có thể mở tất cả loại laptop hiện nay");
+
+        when(productRepository.findAllWithBrandAndCategory()).thenReturn(List.of(cloth, screwdriver));
+        when(inventoryRepository.findByProducts_IdIn(anyList())).thenReturn(List.of(createInventory(cloth, 8)));
+
+        String reply = chatbotService.chat("tôi mua khăn mở trang thanh toán sepay đi");
+
+        assertThat(reply).contains("khăn").contains("2.000₫");
+        assertThat(reply).contains("[Xem & mua khăn](detailproductuser.html?id=11)");
+        assertThat(reply).contains("[Đi tới trang thanh toán](checkout.html)");
+        assertThat(reply).doesNotContain("tô vít tháo máy");
     }
 
     @Test
@@ -113,7 +165,7 @@ class ChatbotHybridTest {
         ReflectionTestUtils.setField(chatbotService, "groqApiKey", "");
 
         Products mouse = createProduct(10L, "Chuột Logitech G304", "Logitech", "Chuột",
-                new BigDecimal("790000"), "Không dây Lightspeed");
+                new BigDecimal("790000"), "Không dây Lightspeed", "Chuột không dây");
         when(productRepository.findAllWithBrandAndCategory()).thenReturn(List.of(mouse));
         when(inventoryRepository.findByProducts_IdIn(anyList())).thenReturn(List.of(createInventory(mouse, 0)));
 
@@ -121,37 +173,65 @@ class ChatbotHybridTest {
         assertThat(stockReply).contains("Chuột Logitech G304").contains("Tạm hết hàng");
 
         String warrantyReply = chatbotService.chat("Chính sách bảo hành điện tử thế nào?");
-        assertThat(warrantyReply).contains("12–36 tháng").contains("BH-MãĐơn-MãSP");
+        assertThat(warrantyReply).contains("12–36 tháng").contains("BH-MãĐơn-MãSP").contains("warranty.html");
 
         String repairReply = chatbotService.chat("Mình muốn đặt lịch sửa chữa laptop tận nơi");
-        assertThat(repairReply).contains("Sửa chữa").contains("tận nơi");
+        assertThat(repairReply).contains("tận nơi").contains("support.html");
 
         String paymentReply = chatbotService.chat("Thanh toán qua SePay VietQR thế nào?");
-        assertThat(paymentReply).contains("VietQR SePay").contains("tự động xác nhận");
+        assertThat(paymentReply).contains("VietQR SePay").contains("checkout.html");
     }
 
     @Test
-    void validGroqKeyCallsOpenAiEndpointWithSystemAndUserMessages() {
+    void validGroqKeyCallsPrimaryQwenModelWithSystemAndUserMessages() {
         ReflectionTestUtils.setField(chatbotService, "groqApiKey", "gsk_test_123");
 
         Products laptop = createProduct(5L, "Laptop Asus Vivobook 15", "Asus", "Laptop",
-                new BigDecimal("15990000"), "Core i5 / 16GB");
+                new BigDecimal("15990000"), "Core i5 / 16GB", "Laptop văn phòng");
         when(productRepository.findAllWithBrandAndCategory()).thenReturn(List.of(laptop));
         when(inventoryRepository.findByProducts_IdIn(anyList())).thenReturn(List.of(createInventory(laptop, 4)));
 
         mockServer.expect(requestTo(GROQ_URL))
                 .andExpect(method(HttpMethod.POST))
                 .andExpect(header("Authorization", "Bearer gsk_test_123"))
+                .andExpect(content().string(containsString("\"model\":\"qwen/qwen3.8-27b\"")))
                 .andExpect(content().string(containsString("\"role\":\"system\"")))
                 .andExpect(content().string(containsString("\"role\":\"user\"")))
                 .andExpect(content().string(containsString("Laptop Asus Vivobook 15")))
                 .andRespond(withSuccess(
-                        "{\"choices\":[{\"message\":{\"content\":\"Dạ HK COMPUTER hiện còn Laptop Asus Vivobook 15 giá 15.990.000₫ (còn 4 chiếc) ạ!\"}}]}",
+                        "{\"choices\":[{\"message\":{\"content\":\"Dạ HK COMPUTER hiện còn Laptop Asus Vivobook 15 giá 15.990.000₫ (còn 4 chiếc) ạ! [Xem & mua Laptop Asus Vivobook 15](detailproductuser.html?id=5)\"}}]}",
                         MediaType.APPLICATION_JSON));
 
         String reply = chatbotService.chat("Tư vấn giúp mình laptop Asus Vivobook");
 
-        assertThat(reply).isEqualTo("Dạ HK COMPUTER hiện còn Laptop Asus Vivobook 15 giá 15.990.000₫ (còn 4 chiếc) ạ!");
+        assertThat(reply).contains("Laptop Asus Vivobook 15").contains("detailproductuser.html?id=5");
+        mockServer.verify();
+    }
+
+    @Test
+    void primaryModel404AutomaticallyRetriesFallbackModelAndReturnsReply() {
+        ReflectionTestUtils.setField(chatbotService, "groqApiKey", "gsk_test_123");
+
+        Products laptop = createProduct(5L, "Laptop Asus Vivobook 15", "Asus", "Laptop",
+                new BigDecimal("15990000"), "Core i5 / 16GB", "Laptop văn phòng");
+        when(productRepository.findAllWithBrandAndCategory()).thenReturn(List.of(laptop));
+        when(inventoryRepository.findByProducts_IdIn(anyList())).thenReturn(List.of(createInventory(laptop, 4)));
+
+        mockServer.expect(requestTo(GROQ_URL))
+                .andExpect(method(HttpMethod.POST))
+                .andExpect(content().string(containsString("\"model\":\"qwen/qwen3.8-27b\"")))
+                .andRespond(withStatus(HttpStatus.NOT_FOUND));
+
+        mockServer.expect(requestTo(GROQ_URL))
+                .andExpect(method(HttpMethod.POST))
+                .andExpect(content().string(containsString("\"model\":\"openai/gpt-oss-120b\"")))
+                .andRespond(withSuccess(
+                        "{\"choices\":[{\"message\":{\"content\":\"HK COMPUTER hiện có Laptop Asus Vivobook 15 giá 15.990.000₫ còn 4 sản phẩm ạ!\"}}]}",
+                        MediaType.APPLICATION_JSON));
+
+        String reply = chatbotService.chat("Tư vấn giúp mình laptop Asus Vivobook");
+
+        assertThat(reply).isEqualTo("HK COMPUTER hiện có Laptop Asus Vivobook 15 giá 15.990.000₫ còn 4 sản phẩm ạ!");
         mockServer.verify();
     }
 
@@ -160,7 +240,7 @@ class ChatbotHybridTest {
         ReflectionTestUtils.setField(chatbotService, "groqApiKey", "gsk_test_123");
 
         Products laptop = createProduct(5L, "Laptop Asus Vivobook 15", "Asus", "Laptop",
-                new BigDecimal("15990000"), "Core i5 / 16GB");
+                new BigDecimal("15990000"), "Core i5 / 16GB", "Laptop văn phòng");
         when(productRepository.findAllWithBrandAndCategory()).thenReturn(List.of(laptop));
         when(inventoryRepository.findByProducts_IdIn(anyList())).thenReturn(List.of(createInventory(laptop, 4)));
 
@@ -179,17 +259,17 @@ class ChatbotHybridTest {
     }
 
     @Test
-    void groqHttpErrorFallsBackSmoothlyToLocalDbReply() {
+    void allGroqModelsFailingFallsBackSmoothlyToLocalDbReply() {
         ReflectionTestUtils.setField(chatbotService, "groqApiKey", "gsk_test_123");
 
         Products laptop = createProduct(5L, "Laptop Asus Vivobook 15", "Asus", "Laptop",
-                new BigDecimal("15990000"), "Core i5 / 16GB");
+                new BigDecimal("15990000"), "Core i5 / 16GB", "Laptop văn phòng");
         when(productRepository.findAllWithBrandAndCategory()).thenReturn(List.of(laptop));
         when(inventoryRepository.findByProducts_IdIn(anyList())).thenReturn(List.of(createInventory(laptop, 4)));
 
-        mockServer.expect(requestTo(GROQ_URL))
-                .andExpect(method(HttpMethod.POST))
-                .andRespond(withStatus(HttpStatus.TOO_MANY_REQUESTS));
+        mockServer.expect(requestTo(GROQ_URL)).andRespond(withStatus(HttpStatus.TOO_MANY_REQUESTS));
+        mockServer.expect(requestTo(GROQ_URL)).andRespond(withStatus(HttpStatus.TOO_MANY_REQUESTS));
+        mockServer.expect(requestTo(GROQ_URL)).andRespond(withStatus(HttpStatus.TOO_MANY_REQUESTS));
 
         String reply = chatbotService.chat("Laptop Asus Vivobook còn hàng không?");
 
@@ -198,7 +278,9 @@ class ChatbotHybridTest {
         mockServer.verify();
     }
 
-    private Products createProduct(Long id, String name, String brandName, String catName, BigDecimal price, String specs) {
+    private Products createProduct(
+            Long id, String name, String brandName, String catName,
+            BigDecimal price, String specs, String description) {
         Brands brand = new Brands();
         brand.setNameBrands(brandName);
 
@@ -212,6 +294,7 @@ class ChatbotHybridTest {
         product.setCategories(category);
         product.setPrice(price);
         product.setSpecs(specs);
+        product.setDescription(description);
         return product;
     }
 
