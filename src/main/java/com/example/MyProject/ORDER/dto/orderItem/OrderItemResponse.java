@@ -8,6 +8,9 @@ public record OrderItemResponse(
         Long id,
         Integer quantity,
         BigDecimal price,
+        Long branchId,
+        String branchName,
+        String branchCity,
         ResponseProduct product
 ) {
 }

@@ -4,10 +4,8 @@ import com.example.MyProject.PRODUCT.common.ApiResponse;
 import com.example.MyProject.PRODUCT.common.BaseController;
 import com.example.MyProject.PRODUCT.dto.categories.CategoriesRequest;
 import com.example.MyProject.PRODUCT.dto.categories.CategoriesResponse;
-import com.example.MyProject.PRODUCT.repository.CategoriesRepository;
 import com.example.MyProject.PRODUCT.service.CategoriesService;
 import lombok.RequiredArgsConstructor;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
@@ -17,7 +15,6 @@ import java.util.List;
 @RestController
 @RequestMapping("/api/categories")
 public class CategoriesController extends BaseController {
-    @Autowired
     private final CategoriesService categoriesService;
     @GetMapping
     public ApiResponse<List<CategoriesResponse>> showCategories(){

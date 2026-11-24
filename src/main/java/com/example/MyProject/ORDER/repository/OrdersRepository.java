@@ -1,59 +1,63 @@
 package com.example.MyProject.ORDER.repository;
 
 import com.example.MyProject.ORDER.entity.Orders;
+import jakarta.persistence.LockModeType;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
 import java.math.BigDecimal;
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
 
 public interface OrdersRepository extends JpaRepository<Orders, Long> {
 
-    /*
-     * ============================================================
-     * LẤY ORDER THEO ACCOUNT
-     * ============================================================
-     */
     List<Orders> findByUseraddressesAccountId(Long accountId);
 
+    @Query("""
+        SELECT COUNT(o)
+        FROM Orders o
+        JOIN o.useraddresses ua
+        WHERE ua.account.id = :accountId
+          AND o.status <> 'CANCELLED'
+    """)
+    long countNonCancelledOrdersByAccountId(@Param("accountId") Long accountId);
 
-    /*
-     * ============================================================
-     * LẤY TẤT CẢ ORDER CỦA USER + FETCH CHI TIẾT
-     *
-     * Orders
-     *   ├── Useraddresses
-     *   └── OrderItems
-     *         └── Products
-     *               ├── Brands
-     *               └── Categories
-     * ============================================================
-     */
+    @Query("""
+        SELECT COUNT(o)
+        FROM Orders o
+        JOIN o.useraddresses ua
+        WHERE ua.account.id = :accountId
+          AND o.voucher.id = :voucherId
+          AND o.status <> 'CANCELLED'
+    """)
+    long countNonCancelledOrdersByAccountIdAndVoucherId(
+            @Param("accountId") Long accountId,
+            @Param("voucherId") Long voucherId
+    );
+
     @Query("""
         SELECT DISTINCT o
         FROM Orders o
         JOIN FETCH o.useraddresses ua
+        LEFT JOIN FETCH o.pickupBranch
         LEFT JOIN FETCH o.orderItems oi
+        LEFT JOIN FETCH oi.branch
         LEFT JOIN FETCH oi.products p
-        JOIN FETCH p.brands
-        JOIN FETCH p.categories
+        LEFT JOIN FETCH p.brands
+        LEFT JOIN FETCH p.categories
         WHERE ua.account.id = :accountId
+        ORDER BY o.id DESC
     """)
     List<Orders> findOrdersWithDetailsByAccountId(
             @Param("accountId") Long accountId
     );
 
-
-    /*
-     * ============================================================
-     * UPDATE TOTAL AMOUNT
-     * ============================================================
-     */
     @Modifying
     @Query("""
         UPDATE Orders o
@@ -65,38 +69,21 @@ public interface OrdersRepository extends JpaRepository<Orders, Long> {
             @Param("totalAmount") BigDecimal totalAmount
     );
 
-
-    /*
-     * ============================================================
-     * KIỂM TRA ORDER CÓ THUỘC USER KHÔNG
-     * ============================================================
-     */
     Optional<Orders> findByIdAndUseraddressesAccountId(
             Long orderId,
             Long accountId
     );
 
-
-    /*
-     * ============================================================
-     * LẤY CHI TIẾT 1 ORDER CỦA USER
-     *
-     * Orders
-     *   ├── Useraddresses
-     *   └── OrderItems
-     *         └── Products
-     *               ├── Brands
-     *               └── Categories
-     * ============================================================
-     */
     @Query("""
         SELECT DISTINCT o
         FROM Orders o
         JOIN FETCH o.useraddresses ua
+        LEFT JOIN FETCH o.pickupBranch
         LEFT JOIN FETCH o.orderItems oi
+        LEFT JOIN FETCH oi.branch
         LEFT JOIN FETCH oi.products p
-        JOIN FETCH p.brands
-        JOIN FETCH p.categories
+        LEFT JOIN FETCH p.brands
+        LEFT JOIN FETCH p.categories
         WHERE o.id = :orderId
           AND ua.account.id = :accountId
     """)
@@ -105,45 +92,75 @@ public interface OrdersRepository extends JpaRepository<Orders, Long> {
             @Param("accountId") Long accountId
     );
 
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("""
+        SELECT o
+        FROM Orders o
+        JOIN o.useraddresses ua
+        WHERE o.id = :orderId
+          AND ua.account.id = :accountId
+    """)
+    Optional<Orders> findForWarrantyClaimByIdAndAccountId(
+            @Param("orderId") Long orderId,
+            @Param("accountId") Long accountId
+    );
 
-    /*
-     * ============================================================
-     * LẤY ID ORDER CÓ PHÂN TRANG
-     *
-     * KHÔNG viết ORDER BY trong JPQL.
-     *
-     * Pageable sẽ tự thêm:
-     *
-     * ORDER BY o1_0.created_at DESC
-     *
-     * ============================================================
-     */
+    @Query("""
+        SELECT DISTINCT o
+        FROM Orders o
+        LEFT JOIN FETCH o.useraddresses ua
+        LEFT JOIN FETCH o.pickupBranch
+        LEFT JOIN FETCH o.orderItems oi
+        LEFT JOIN FETCH oi.branch
+        LEFT JOIN FETCH oi.products p
+        LEFT JOIN FETCH p.brands
+        LEFT JOIN FETCH p.categories
+        WHERE o.id = :orderId
+    """)
+    Optional<Orders> findByIdWithDetails(
+            @Param("orderId") Long orderId
+    );
+
     @Query("""
         SELECT o.id
         FROM Orders o
     """)
     Page<Long> findAllOrderIds(Pageable pageable);
 
-
-    /*
-     * ============================================================
-     * LẤY CHI TIẾT ORDER THEO LIST ID
-     *
-     * Dùng sau khi đã phân trang ID.
-     *
-     * ============================================================
-     */
     @Query("""
         SELECT DISTINCT o
         FROM Orders o
         JOIN FETCH o.useraddresses ua
+        LEFT JOIN FETCH o.pickupBranch
         LEFT JOIN FETCH o.orderItems oi
+        LEFT JOIN FETCH oi.branch
         LEFT JOIN FETCH oi.products p
-        JOIN FETCH p.brands
-        JOIN FETCH p.categories
+        LEFT JOIN FETCH p.brands
+        LEFT JOIN FETCH p.categories
         WHERE o.id IN :ids
     """)
     List<Orders> findAllOrdersWithDetails(
             @Param("ids") List<Long> ids
     );
+
+    @Query("""
+        SELECT o.id
+        FROM Orders o
+        WHERE o.status = 'UNPAID'
+          AND o.createdAt IS NOT NULL
+          AND o.createdAt < :cutoff
+    """)
+    List<Long> findExpiredUnpaidOrderIds(@Param("cutoff") LocalDateTime cutoff);
+
+    @Query("""
+        SELECT DISTINCT o
+        FROM Orders o
+        LEFT JOIN FETCH o.useraddresses ua
+        LEFT JOIN FETCH o.pickupBranch
+        LEFT JOIN FETCH o.orderItems oi
+        LEFT JOIN FETCH oi.products p
+        LEFT JOIN FETCH p.categories
+        ORDER BY o.id DESC
+    """)
+    List<Orders> findAllWithItemsForDashboard();
 }

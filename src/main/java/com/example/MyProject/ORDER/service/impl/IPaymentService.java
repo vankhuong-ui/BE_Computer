@@ -12,10 +12,12 @@ import com.example.MyProject.ORDER.entity.Payment;
 import com.example.MyProject.ORDER.mapper.PaymentMapper;
 import com.example.MyProject.ORDER.repository.OrdersRepository;
 import com.example.MyProject.ORDER.repository.PaymentRepository;
+import com.example.MyProject.ORDER.service.OrderNotificationService;
 import com.example.MyProject.ORDER.service.OrdersService;
 import com.example.MyProject.ORDER.service.PaymentService;
 import jakarta.servlet.http.HttpServletRequest;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
@@ -33,6 +35,7 @@ import java.util.regex.Pattern;
 import java.time.ZoneId;
 import java.time.ZonedDateTime;
 import java.time.format.DateTimeFormatter;
+@Slf4j
 @Service
 @RequiredArgsConstructor
 public class IPaymentService implements PaymentService {
@@ -44,6 +47,7 @@ public class IPaymentService implements PaymentService {
     private final SePayConfig sePayConfig;
     private final OrdersService ordersService;
     private final SimpMessagingTemplate messagingTemplate;
+    private final OrderNotificationService orderNotificationService;
 
     @Override
     public String createVNPayPayment(Long orderId, HttpServletRequest request) {
@@ -131,7 +135,9 @@ public class IPaymentService implements PaymentService {
 
         if (isSuccess && !"COMPLETED".equals(order.getStatus())) {
             order.setStatus("COMPLETED");
+            order.setPaidAt(LocalDateTime.now());
             ordersRepository.save(order);
+            orderNotificationService.sendOrderPaidEmailAsync(order.getId(), "VNPAY");
         }
 
         Payment payment = Payment.builder()
@@ -172,7 +178,9 @@ public class IPaymentService implements PaymentService {
         // Kiểm tra nếu đơn hàng đã COMPLETED rồi thì không cập nhật nữa
         if (isSuccess && !"COMPLETED".equals(order.getStatus())) {
             order.setStatus("COMPLETED");
+            order.setPaidAt(LocalDateTime.now());
             ordersRepository.save(order);
+            orderNotificationService.sendOrderPaidEmailAsync(order.getId(), "VNPAY");
         }
 
         // Tạo hoặc cập nhật payment record
@@ -246,9 +254,10 @@ public class IPaymentService implements PaymentService {
             throw new IllegalArgumentException("Webhook payload cannot be null");
         }
 
-        // 2. Chỉ xử lý giao dịch tiền vào ("in")
+        // 2. Chỉ xử lý giao dịch tiền vào ("in") — trả null (HTTP 200) để SePay không retry giao dịch tiền ra
         if (webhookRequest.transferType() != null && !"in".equalsIgnoreCase(webhookRequest.transferType())) {
-            throw new IllegalArgumentException("Ignored non-incoming transaction");
+            log.info("SePay webhook skipped non-incoming transaction: id={}", webhookRequest.id());
+            return null;
         }
 
         // 3. Kiểm tra trùng lặp giao dịch (Idempotency)
@@ -266,30 +275,42 @@ public class IPaymentService implements PaymentService {
             return null;
         }
 
-        // 4. Bóc tách mã đơn hàng (orderId) từ code hoặc content
+        // 4. Bóc tách mã đơn hàng (orderId) từ code hoặc content — giao dịch cá nhân không chứa mã đơn trả 200 để tránh retry
         Long orderId = extractOrderIdFromContent(webhookRequest.code(), webhookRequest.content());
         if (orderId == null) {
-            throw new IllegalArgumentException("Không tìm thấy mã đơn hàng trong nội dung chuyển khoản");
+            log.info("SePay webhook skipped transfer without order prefix: txId={}", txId);
+            return null;
         }
 
-        Orders order = ordersRepository.findById(orderId)
-                .orElseThrow(() -> new RuntimeException("Đơn hàng không tồn tại: " + orderId));
+        Orders order = ordersRepository.findById(orderId).orElse(null);
+        if (order == null) {
+            log.warn("SePay webhook order not found: orderId={}, txId={}", orderId, txId);
+            return null;
+        }
 
         BigDecimal transferAmount = webhookRequest.transferAmount() != null ? webhookRequest.transferAmount() : BigDecimal.ZERO;
+        boolean isOrderCancelled = "CANCELLED".equalsIgnoreCase(order.getStatus());
         boolean isAmountEnough = transferAmount.compareTo(order.getTotalAmount()) >= 0;
+        boolean canComplete = !isOrderCancelled && isAmountEnough;
 
-        if (isAmountEnough && !"COMPLETED".equals(order.getStatus())) {
+        if (canComplete && !"COMPLETED".equals(order.getStatus())) {
             order.setStatus("COMPLETED");
+            order.setPaidAt(LocalDateTime.now());
             ordersRepository.save(order);
+            orderNotificationService.sendOrderPaidEmailAsync(order.getId(), "SEPAY");
         }
+
+        String responseCode = isOrderCancelled
+                ? "ORDER_CANCELLED"
+                : (isAmountEnough ? "00" : "AMOUNT_MISMATCH");
 
         Payment payment = Payment.builder()
                 .order(order)
                 .transactionId(txId)
                 .paymentGateway("SEPAY")
                 .amount(transferAmount)
-                .status(isAmountEnough ? "SUCCESS" : "FAILED")
-                .responseCode(isAmountEnough ? "00" : "AMOUNT_MISMATCH")
+                .status(canComplete ? "SUCCESS" : "FAILED")
+                .responseCode(responseCode)
                 .createdAt(LocalDateTime.now())
                 .build();
 

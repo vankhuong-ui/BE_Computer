@@ -2,6 +2,8 @@ package com.example.MyProject.REVIEW.service.ipml;
 
 import com.example.MyProject.AUTH.common.PhoneValidator;
 import com.example.MyProject.AUTH.entity.Account;
+import com.example.MyProject.PRODUCT.entity.Branch;
+import com.example.MyProject.PRODUCT.repository.BranchRepository;
 import com.example.MyProject.REVIEW.dto.repair.RepairBookingRequest;
 import com.example.MyProject.REVIEW.dto.repair.RepairBookingResponse;
 import com.example.MyProject.REVIEW.entity.RepairBooking;
@@ -15,13 +17,18 @@ import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.LocalDate;
+import java.time.LocalTime;
+import java.time.format.DateTimeParseException;
 import java.util.List;
+import java.util.Locale;
 
 @Service
 @RequiredArgsConstructor
 public class IRepairBookingService implements RepairBookingService {
 
     private final RepairBookingRepository repairBookingRepository;
+    private final BranchRepository branchRepository;
 
     @Transactional
     @Override
@@ -33,9 +40,12 @@ public class IRepairBookingService implements RepairBookingService {
             throw new RuntimeException("Vui lòng nhập họ tên khách hàng");
         }
         String normalizedPhone = PhoneValidator.validateAndNormalize(request.customerPhone());
-        String method = request.serviceMethod() != null && "AT_HOME".equalsIgnoreCase(request.serviceMethod().trim())
-                ? "AT_HOME"
-                : "AT_STORE";
+        String method = request.serviceMethod() == null || request.serviceMethod().isBlank()
+                ? "AT_STORE"
+                : request.serviceMethod().trim().toUpperCase(Locale.ROOT);
+        if (!List.of("AT_STORE", "AT_HOME").contains(method)) {
+            throw new RuntimeException("Hình thức sửa chữa không hợp lệ");
+        }
 
         String resolvedBranch = request.branchName() != null ? request.branchName().trim() : "";
         String resolvedHomeAddr = request.homeAddress() != null ? request.homeAddress().trim() : "";
@@ -44,21 +54,29 @@ public class IRepairBookingService implements RepairBookingService {
             if (resolvedHomeAddr.isBlank()) {
                 throw new RuntimeException("Vui lòng nhập địa chỉ để kỹ thuật viên đến tận nơi");
             }
-            if (resolvedBranch.isBlank()) {
-                resolvedBranch = "Sửa tại nhà — " + resolvedHomeAddr;
-            }
+            resolvedBranch = "Sửa tại nhà — " + resolvedHomeAddr;
         } else {
             if (resolvedBranch.isBlank()) {
                 throw new RuntimeException("Vui lòng chọn chi nhánh tiếp nhận");
             }
+            String selectedBranch = resolvedBranch;
+            Branch branch = branchRepository.findByActiveTrueOrderByIdAsc().stream()
+                    .filter(candidate -> candidate.getCode().equalsIgnoreCase(selectedBranch)
+                            || candidate.getName().equalsIgnoreCase(selectedBranch))
+                    .findFirst()
+                    .orElseThrow(() -> new RuntimeException("Chi nhánh không tồn tại hoặc đã ngừng hoạt động"));
+            resolvedBranch = branch.getName();
         }
 
         if (request.deviceModel() == null || request.deviceModel().isBlank()) {
             throw new RuntimeException("Vui lòng nhập tên dòng máy / thiết bị");
         }
-        if (request.appointmentDate() == null || request.appointmentDate().isBlank()
-                || request.appointmentTime() == null || request.appointmentTime().isBlank()) {
-            throw new RuntimeException("Vui lòng chọn ngày và khung giờ hẹn");
+        LocalDate appointmentDate = parseAppointmentDate(request.appointmentDate());
+        LocalTime appointmentStart = parseAppointmentTime(request.appointmentTime());
+        LocalDate today = LocalDate.now();
+        if (appointmentDate.isBefore(today)
+                || (appointmentDate.isEqual(today) && !appointmentStart.isAfter(LocalTime.now()))) {
+            throw new RuntimeException("Ngày và giờ hẹn phải nằm trong tương lai");
         }
 
         Account currentAccount = null;
@@ -82,8 +100,8 @@ public class IRepairBookingService implements RepairBookingService {
                         ? request.serviceType().trim()
                         : "Kiểm tra & Sửa chữa tổng quát")
                 .issueDescription(request.issueDescription() != null ? request.issueDescription().trim() : "")
-                .appointmentDate(request.appointmentDate().trim())
-                .appointmentTime(request.appointmentTime().trim())
+                .appointmentDate(appointmentDate.toString())
+                .appointmentTime(request.appointmentTime().trim().replace('–', '-'))
                 .status("PENDING")
                 .build();
 
@@ -106,19 +124,63 @@ public class IRepairBookingService implements RepairBookingService {
     @Transactional
     @Override
     public RepairBookingResponse updateBookingStatus(Long id, String status, String adminNote) {
-        List<String> valid = List.of("PENDING", "CONFIRMED", "IN_PROGRESS", "COMPLETED", "CANCELLED");
-        String upper = status != null ? status.trim().toUpperCase() : "";
-        if (!valid.contains(upper)) {
-            throw new RuntimeException("Trạng thái lịch hẹn không hợp lệ: " + status);
-        }
+        String upper = status != null ? status.trim().toUpperCase(Locale.ROOT) : "";
 
         RepairBooking booking = repairBookingRepository.findById(id)
                 .orElseThrow(() -> new RuntimeException("Không tìm thấy lịch hẹn sửa chữa #" + id));
+        String currentStatus = booking.getStatus() != null ? booking.getStatus().trim().toUpperCase(Locale.ROOT) : "";
+        if (!currentStatus.equals(upper) && !allowedBookingTransitions(currentStatus).contains(upper)) {
+            throw new RuntimeException("Không thể chuyển trạng thái lịch hẹn từ "
+                    + currentStatus + " sang " + upper);
+        }
         booking.setStatus(upper);
         if (adminNote != null) {
             booking.setAdminNote(adminNote.trim());
         }
         return toResponse(repairBookingRepository.save(booking));
+    }
+
+    private LocalDate parseAppointmentDate(String value) {
+        if (value == null || value.isBlank()) {
+            throw new RuntimeException("Vui lòng chọn ngày hẹn");
+        }
+        try {
+            return LocalDate.parse(value.trim());
+        } catch (DateTimeParseException e) {
+            throw new RuntimeException("Ngày hẹn phải có định dạng yyyy-MM-dd");
+        }
+    }
+
+    private LocalTime parseAppointmentTime(String value) {
+        if (value == null || value.isBlank()) {
+            throw new RuntimeException("Vui lòng chọn khung giờ hẹn");
+        }
+        String[] times = value.trim().replace('–', '-').split("\\s*-\\s*", -1);
+        if (times.length < 1 || times.length > 2) {
+            throw new RuntimeException("Khung giờ phải có định dạng HH:mm hoặc HH:mm - HH:mm");
+        }
+        if (!times[0].matches("\\d{2}:\\d{2}")
+                || (times.length == 2 && !times[1].matches("\\d{2}:\\d{2}"))) {
+            throw new RuntimeException("Khung giờ phải có định dạng HH:mm hoặc HH:mm - HH:mm");
+        }
+        try {
+            LocalTime start = LocalTime.parse(times[0]);
+            if (times.length == 2 && !LocalTime.parse(times[1]).isAfter(start)) {
+                throw new RuntimeException("Giờ kết thúc phải sau giờ bắt đầu");
+            }
+            return start;
+        } catch (DateTimeParseException e) {
+            throw new RuntimeException("Khung giờ phải có định dạng HH:mm hoặc HH:mm - HH:mm");
+        }
+    }
+
+    private List<String> allowedBookingTransitions(String currentStatus) {
+        return switch (currentStatus) {
+            case "PENDING" -> List.of("CONFIRMED", "CANCELLED");
+            case "CONFIRMED" -> List.of("IN_PROGRESS", "CANCELLED");
+            case "IN_PROGRESS" -> List.of("COMPLETED", "CANCELLED");
+            default -> List.of();
+        };
     }
 
     private RepairBookingResponse toResponse(RepairBooking b) {

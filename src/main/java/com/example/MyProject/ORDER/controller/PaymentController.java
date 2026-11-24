@@ -25,7 +25,7 @@ public class PaymentController extends BaseController {
     private final PaymentService paymentService;
 
     @GetMapping("/create-vnpay/{order_id}")
-    @PreAuthorize("hasAnyAuthority('USER', 'ROLE_USER')")
+    @PreAuthorize("hasAnyAuthority('USER', 'ADMIN', 'ROLE_USER', 'ROLE_ADMIN')")
     public ApiResponse<Map<String, String>> createPayment(
             @PathVariable("order_id") Long orderId,
             HttpServletRequest request
@@ -39,7 +39,7 @@ public class PaymentController extends BaseController {
 
     // ✅ API tạo thông tin thanh toán QR SePay (VietQR)
     @GetMapping("/create-sepay/{order_id}")
-    @PreAuthorize("hasAnyAuthority('USER', 'ROLE_USER')")
+    @PreAuthorize("hasAnyAuthority('USER', 'ADMIN', 'ROLE_USER', 'ROLE_ADMIN')")
     public ApiResponse<SePayPaymentInfoResponse> createSePayPayment(
             @PathVariable("order_id") Long orderId
     ) {

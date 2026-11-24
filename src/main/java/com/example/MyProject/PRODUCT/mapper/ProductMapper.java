@@ -8,13 +8,21 @@ import org.mapstruct.Mapping;
 import org.mapstruct.MappingTarget;
 import org.mapstruct.NullValuePropertyMappingStrategy;
 
-@Mapper(componentModel = "spring",nullValuePropertyMappingStrategy = NullValuePropertyMappingStrategy.IGNORE)
+@Mapper(componentModel = "spring", nullValuePropertyMappingStrategy = NullValuePropertyMappingStrategy.IGNORE)
 public interface ProductMapper {
-    @Mapping(source ="brandsId",target = "brands.id")
-    @Mapping(source="categoriesId",target ="categories.id")
+
+    @Mapping(source = "brandsId", target = "brands.id")
+    @Mapping(source = "categoriesId", target = "categories.id")
     Products toEntity(RequestProduct requestProduct);
+
     @Mapping(source = "brands.id", target = "brandsId")
     @Mapping(source = "categories.id", target = "categoriesId")
+    @Mapping(source = "brands.nameBrands", target = "brandsName")
+    @Mapping(source = "categories.nameCategories", target = "categoriesName")
+    @Mapping(source = "categories.groupType", target = "groupType")
     ResponseProduct toReponse(Products products);
-    void updateProduct(RequestProduct requestProduct,@MappingTarget Products products);
+
+    @Mapping(target = "brands", ignore = true)
+    @Mapping(target = "categories", ignore = true)
+    void updateProduct(RequestProduct requestProduct, @MappingTarget Products products);
 }

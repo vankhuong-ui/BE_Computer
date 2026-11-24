@@ -5,10 +5,7 @@ import com.example.MyProject.PRODUCT.common.BaseController;
 import com.example.MyProject.PRODUCT.dto.brands.BrandsRequest;
 import com.example.MyProject.PRODUCT.dto.brands.BrandsResponse;
 import com.example.MyProject.PRODUCT.service.BrandsService;
-import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.data.domain.Page;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
@@ -18,7 +15,6 @@ import java.util.List;
 @RequiredArgsConstructor
 @RequestMapping(value = "/api/brands")
 public class BrandsController extends BaseController {
-    @Autowired
     private final BrandsService brandsService;
 
     @GetMapping

@@ -13,9 +13,11 @@ import com.example.MyProject.AUTH.repository.AccountRepository;
 import com.example.MyProject.AUTH.security.jwt.JwtService;
 import com.example.MyProject.AUTH.security.service.RefreshTokenService;
 import com.example.MyProject.AUTH.service.AccountService;
+import com.example.MyProject.AUTH.service.RedisRateLimiterService;
 import jakarta.servlet.http.HttpServletResponse;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.ResponseCookie;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.Authentication;
@@ -29,13 +31,13 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.web.bind.annotation.*;
-import jakarta.servlet.http.Cookie;
 
 import java.util.List;
 import java.util.Map;
 
 import jakarta.servlet.http.HttpServletRequest;
 
+@Slf4j
 @RestController
 @RequiredArgsConstructor
 @RequestMapping(value = "/api/account")
@@ -46,6 +48,7 @@ public class AccountController extends BaseController {
     private final RefreshTokenService refreshTokenService;
     private final AccountRepository accountRepository;
     private final AccountMapper accountMapper;
+    private final RedisRateLimiterService rateLimiterService;
 
     @GetMapping
     @PreAuthorize("hasAnyRole('ADMIN')")
@@ -97,20 +100,10 @@ public class AccountController extends BaseController {
         Account account = (Account) authentication.getPrincipal();
         RefreshToken refreshToken = refreshTokenService.createRefreshToken(account.getId());
 
-        // Dùng ResponseCookie để set SameSite và domain rõ ràng
-        ResponseCookie cookie = ResponseCookie.from("refreshToken", refreshToken.getToken())
-                .httpOnly(true)
-                .secure(true)
-                .path("/")
-                .maxAge(7 * 24 * 60 * 60)
-                .sameSite("None")
-                .build();
-
+        ResponseCookie cookie = buildRefreshCookie(refreshToken.getToken(), 7L * 24 * 60 * 60);
         response.addHeader("Set-Cookie", cookie.toString());
 
-        System.out.println("Login - Token: " + refreshToken.getToken());
-        System.out.println("Login - Cookie: " + cookie.toString());
-        System.out.println("RefreshToken: " + refreshToken);
+        log.debug("Account login success: accountId={}", account.getId());
         return ResponseEntity.ok(ApiResponse.succcessWithmessage("Đăng nhập thành công",accountMapper.toResponse(account)));
     }
 
@@ -118,8 +111,6 @@ public class AccountController extends BaseController {
     public ApiResponse<Map<String, String>> refreshToken(
             @CookieValue(value = "refreshToken", required = false)
             String refreshTokenStr) {
-
-        System.out.println("🔍 Refresh token from cookie: " + refreshTokenStr);
 
         if (refreshTokenStr == null || refreshTokenStr.isBlank()) {
             throw new RuntimeException("Refresh token not found");
@@ -169,13 +160,7 @@ public class AccountController extends BaseController {
                     });
         }
 
-        ResponseCookie deleteCookie = ResponseCookie.from("refreshToken", "")
-                .httpOnly(true)
-                .secure(true)
-                .path("/")
-                .maxAge(0)
-                .sameSite("None")
-                .build();
+        ResponseCookie deleteCookie = buildRefreshCookie("", 0);
         response.addHeader("Set-Cookie", deleteCookie.toString());
 
         return ApiResponse.succcess(new ResponseEntity<>(Map.of("message", "Logout Successfully"), HttpStatus.OK));
@@ -197,6 +182,11 @@ public class AccountController extends BaseController {
     public ApiResponse<String> sendCode(
             @RequestParam String gmail) {
 
+        String normalizedEmail = gmail != null ? gmail.trim().toLowerCase() : "";
+        if (!rateLimiterService.allowRequest("otp:" + normalizedEmail, 1, java.time.Duration.ofSeconds(60))) {
+            throw new RuntimeException("Vui lòng đợi 60 giây trước khi yêu cầu gửi lại mã OTP");
+        }
+
         accountService.seenGmail(gmail);
 
         return createSuccessResponse(
@@ -216,18 +206,10 @@ public class AccountController extends BaseController {
 
         RefreshToken refreshToken = refreshTokenService.createRefreshToken(account.getId());
 
-        ResponseCookie cookie = ResponseCookie.from("refreshToken", refreshToken.getToken())
-                .httpOnly(true)
-                .secure(true)
-                .path("/")
-                .maxAge(7 * 24 * 60 * 60)
-                .sameSite("None")
-                .build();
-
+        ResponseCookie cookie = buildRefreshCookie(refreshToken.getToken(), 7L * 24 * 60 * 60);
         response.addHeader("Set-Cookie", cookie.toString());
 
-        System.out.println("CheckCode - Cookie: " + cookie.toString());
-
+        log.debug("OTP verification success: accountId={}", account.getId());
         return creatSucessTRessponsWithmessage("Xác thực mã thành công",accountMapper.toResponse(account));
     }
 
@@ -249,5 +231,15 @@ public class AccountController extends BaseController {
     public ApiResponse<Map<String, Boolean>> checkPasswordExists() {
         boolean hasPassword = accountService.hasPassword();
         return creatSucessTRessponsWithmessage("Check password success!", Map.of("hasPassword", hasPassword));
+    }
+
+    private ResponseCookie buildRefreshCookie(String token, long maxAgeSeconds) {
+        return ResponseCookie.from("refreshToken", token)
+                .httpOnly(true)
+                .secure(true)
+                .path("/")
+                .maxAge(maxAgeSeconds)
+                .sameSite("None")
+                .build();
     }
 }

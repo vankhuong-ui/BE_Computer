@@ -19,6 +19,10 @@ public class Categories {
     private Long id;
     private String nameCategories;
     private String slug;
+
+    @Column(name = "group_type", nullable = false, length = 50)
+    private String groupType = "LAPTOP";
+
     @OneToMany(mappedBy = "categories")
     private List<Products> productsList = new ArrayList<>();
 }

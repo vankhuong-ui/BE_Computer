@@ -7,43 +7,44 @@ import com.example.MyProject.AUTH.entity.Account;
 import com.example.MyProject.AUTH.entity.Useraddresses;
 import com.example.MyProject.AUTH.mapper.UseraddressMapper;
 import com.example.MyProject.AUTH.repository.UseraddressRepository;
-import com.example.MyProject.AUTH.security.custom.CustomUserDetailsService;
 import com.example.MyProject.AUTH.service.UseraddressService;
 import lombok.RequiredArgsConstructor;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
 
 @Service
 @RequiredArgsConstructor
 public class IUseraddressService implements UseraddressService {
-    @Autowired
+
     private final UseraddressMapper useraddressMapper;
-    @Autowired
     private final UseraddressRepository useraddressRepository;
 
     @Override
+    @Transactional
     public void createUseraddress(UseraddressRequest useraddressRequest) {
-        Account account=(Account) SecurityContextHolder.getContext().getAuthentication().getPrincipal();
-        Long accountid= account.getId();
-        List<Useraddresses> useraddressList = useraddressRepository.findByAccountId(accountid);
+        Account account = getCurrentAccount();
+        List<Useraddresses> useraddressList = useraddressRepository.findByAccountId(account.getId());
         if (useraddressList.size() >= 5) {
-            throw new RuntimeException("mỗi Account chỉ được đăng kí 10 địa chỉ nhận hàng");
+            throw new RuntimeException("Mỗi tài khoản chỉ được đăng ký tối đa 5 địa chỉ nhận hàng");
         }
         String normalizedPhone = PhoneValidator.validateAndNormalize(useraddressRequest.phone());
-        Useraddresses useraddresses=useraddressMapper.toEntity(useraddressRequest);
+        Useraddresses useraddresses = useraddressMapper.toEntity(useraddressRequest);
         useraddresses.setPhone(normalizedPhone);
         useraddresses.setAccount(account);
         useraddressRepository.save(useraddresses);
     }
 
     @Override
+    @Transactional
     public void updateUseraddress(Long id, UseraddressRequest useraddressRequest) {
-        Useraddresses useraddresses = useraddressRepository.findById(id).orElseThrow(() -> new RuntimeException("useraddresses not exitst!"));
+        Account account = getCurrentAccount();
+        Useraddresses useraddresses = useraddressRepository.findByIdAndAccountId(id, account.getId())
+                .orElseThrow(() -> new RuntimeException("Địa chỉ không tồn tại hoặc không thuộc tài khoản của bạn"));
         String normalizedPhone = null;
         if (useraddressRequest.phone() != null) {
             normalizedPhone = PhoneValidator.validateAndNormalize(useraddressRequest.phone());
@@ -56,30 +57,38 @@ public class IUseraddressService implements UseraddressService {
     }
 
     @Override
+    @Transactional(readOnly = true)
     public Page<UseraddressResponse> showList(Pageable pageable) {
-        Page<Useraddresses> responsePage = useraddressRepository.findAll(pageable);
-        return responsePage.map(useraddressMapper::toRespon);
+        return useraddressRepository.findAll(pageable).map(useraddressMapper::toRespon);
     }
 
     @Override
+    @Transactional
     public void deleteUseraddress(Long id) {
-        useraddressRepository.deleteById(id);
+        Account account = getCurrentAccount();
+        Useraddresses useraddresses = useraddressRepository.findByIdAndAccountId(id, account.getId())
+                .orElseThrow(() -> new RuntimeException("Địa chỉ không tồn tại hoặc không thuộc tài khoản của bạn"));
+        useraddressRepository.delete(useraddresses);
     }
 
     @Override
+    @Transactional(readOnly = true)
     public List<UseraddressResponse> searchUseraddress(String nameUseraddress) {
-        List<Useraddresses> useraddresses = useraddressRepository.findByUsername(nameUseraddress);
-        return useraddresses.stream().map(useraddressMapper::toRespon).toList();
+        return useraddressRepository.findByUsername(nameUseraddress).stream()
+                .map(useraddressMapper::toRespon)
+                .toList();
     }
 
     @Override
+    @Transactional(readOnly = true)
     public List<UseraddressResponse> listaddress() {
-        Account userDetails=(Account) SecurityContextHolder
-                .getContext()
-                .getAuthentication()
-                .getPrincipal();
-        Long accountid= userDetails.getId();
-        List<Useraddresses> useraddresses=useraddressRepository.findByAccountId(accountid);
-        return useraddresses.stream().map(useraddressMapper::toRespon).toList();
+        Account account = getCurrentAccount();
+        return useraddressRepository.findByAccountId(account.getId()).stream()
+                .map(useraddressMapper::toRespon)
+                .toList();
+    }
+
+    private Account getCurrentAccount() {
+        return (Account) SecurityContextHolder.getContext().getAuthentication().getPrincipal();
     }
 }

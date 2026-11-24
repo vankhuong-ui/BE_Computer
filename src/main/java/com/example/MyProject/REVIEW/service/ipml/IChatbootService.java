@@ -1,5 +1,6 @@
 package com.example.MyProject.REVIEW.service.ipml;
 
+import com.example.MyProject.AUTH.service.RedisRateLimiterService;
 import com.example.MyProject.PRODUCT.entity.Inventory;
 import com.example.MyProject.PRODUCT.entity.Products;
 import com.example.MyProject.PRODUCT.repository.InventoryRepository;
@@ -8,6 +9,7 @@ import com.example.MyProject.REVIEW.service.ChatbotGuardrail;
 import com.example.MyProject.REVIEW.service.ChatbotService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.MediaType;
 import org.springframework.stereotype.Service;
@@ -70,6 +72,9 @@ public class IChatbootService implements ChatbotService {
     private final RestClient restClient;
     private final ChatbotGuardrail chatbotGuardrail;
 
+    @Autowired(required = false)
+    private RedisRateLimiterService rateLimiterService;
+
     @Value("${groq.api.key:}")
     private String groqApiKey = "";
 
@@ -85,6 +90,12 @@ public class IChatbootService implements ChatbotService {
     @Override
     @Transactional(readOnly = true)
     public String chat(String message) {
+        return chat(message, null);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public String chat(String message, String sessionKey) {
         Optional<String> inputBlocked = chatbotGuardrail.checkInput(message);
         if (inputBlocked.isPresent()) {
             return inputBlocked.get();
@@ -151,23 +162,36 @@ public class IChatbootService implements ChatbotService {
                 isCapability, isMostExpensive, isCheapest, isBuyOrCheckout,
                 isWarranty, isRepair, isPayment, isGreeting, isThanks, hasProductQuery);
 
+        if (rateLimiterService != null && sessionKey != null && !sessionKey.isBlank()) {
+            List<String> history = rateLimiterService.getChatHistory(sessionKey);
+            if (!history.isEmpty()) {
+                databaseContext = databaseContext + "\n\nNGỮ CẢNH HỘI THOẠI GẦN ĐÂY:\n" + String.join("\n", history);
+            }
+        }
+
         String localFallbackReply = buildLocalReply(
                 matchedProducts, searchTokens, priceRange,
                 isCapability, isMostExpensive, isCheapest, isBuyOrCheckout,
                 isWarranty, isRepair, isPayment, isGreeting, isThanks,
                 isProductList, isInventory, hasProductQuery);
 
+        String finalReply;
         if (!hasValidGroqKey()) {
-            return chatbotGuardrail.sanitizeOutput(localFallbackReply, localFallbackReply);
+            finalReply = chatbotGuardrail.sanitizeOutput(localFallbackReply, localFallbackReply);
+        } else {
+            try {
+                String aiReply = callGroqWithFallback(message.trim(), databaseContext);
+                finalReply = chatbotGuardrail.sanitizeOutput(aiReply, localFallbackReply);
+            } catch (Exception e) {
+                log.warn("All Groq models failed, falling back to local DB response: {}", e.getMessage());
+                finalReply = chatbotGuardrail.sanitizeOutput(localFallbackReply, localFallbackReply);
+            }
         }
 
-        try {
-            String aiReply = callGroqWithFallback(message.trim(), databaseContext);
-            return chatbotGuardrail.sanitizeOutput(aiReply, localFallbackReply);
-        } catch (Exception e) {
-            log.warn("All Groq models failed, falling back to local DB response: {}", e.getMessage());
-            return chatbotGuardrail.sanitizeOutput(localFallbackReply, localFallbackReply);
+        if (rateLimiterService != null && sessionKey != null && !sessionKey.isBlank()) {
+            rateLimiterService.appendChatExchange(sessionKey, message, finalReply);
         }
+        return finalReply;
     }
 
     private boolean hasValidGroqKey() {
@@ -386,7 +410,10 @@ public class IChatbootService implements ChatbotService {
             if (inventories != null) {
                 for (Inventory inv : inventories) {
                     if (inv.getProducts() != null && inv.getProducts().getId() != null) {
-                        stockMap.put(inv.getProducts().getId(), Math.max(0, inv.getSoluong()));
+                        if (inv.getBranch() != null && !inv.getBranch().isActive()) {
+                            continue;
+                        }
+                        stockMap.merge(inv.getProducts().getId(), Math.max(0, inv.getSoluong()), Integer::sum);
                     }
                 }
             }
@@ -506,9 +533,9 @@ public class IChatbootService implements ChatbotService {
 
         if (isWarranty) {
             ctx.append("\nCHÍNH SÁCH BẢO HÀNH ĐIỆN TỬ:\n")
-                    .append("- Mọi sản phẩm tại HK COMPUTER được kích hoạt bảo hành điện tử tự động (12 - 36 tháng tùy danh mục) ngay khi thanh toán thành công.\n")
-                    .append("- Mã Serial bảo hành có dạng BH-MãĐơn-MãSP.\n")
-                    .append("- Đường dẫn tra cứu & gửi yêu cầu: [Tra cứu bảo hành](warranty.html)\n");
+                    .append("- Thẻ bảo hành được tính từ thời điểm thanh toán (12 - 36 tháng tùy danh mục).\n")
+                    .append("- Mỗi thiết bị có mã Serial dạng BH-MãĐơn-MãSP-SốThiếtBị.\n")
+                    .append("- Khách cần đăng nhập và chỉ tra cứu được đơn hàng của mình: [Tra cứu bảo hành](warranty.html)\n");
         }
 
         if (isRepair) {
@@ -586,7 +613,7 @@ public class IChatbootService implements ChatbotService {
                     Mình là trợ lý của **HK COMPUTER**. Mình có thể giúp bạn:
                     • Tìm sản phẩm theo tên, hãng hoặc ngân sách (VD: "laptop Asus dưới 20 triệu")
                     • Kiểm tra tồn kho & gợi ý sản phẩm giá cao nhất / thấp nhất tại cửa hàng
-                    • Tra cứu bảo hành điện tử (mã BH-MãĐơn-MãSP) [Tra cứu bảo hành](warranty.html)
+                    • Tra cứu bảo hành sau khi đăng nhập (mã BH-MãĐơn-MãSP-SốThiếtBị) [Tra cứu bảo hành](warranty.html)
                     • Hướng dẫn đặt lịch sửa chữa tại cửa hàng hoặc tận nơi [Đặt lịch sửa chữa](support.html)
                     • Hướng dẫn thanh toán VietQR SePay, VNPay hoặc COD [Đi tới trang thanh toán](checkout.html)
 
@@ -650,7 +677,7 @@ public class IChatbootService implements ChatbotService {
 
         if (isWarranty) {
             appendParagraph(reply,
-                    "Về bảo hành: Tất cả sản phẩm mua tại HK COMPUTER đều được kích hoạt bảo hành điện tử tự động (12–36 tháng tùy danh mục) ngay khi thanh toán thành công với mã Serial dạng BH-MãĐơn-MãSP. [Tra cứu bảo hành](warranty.html)");
+                    "Về bảo hành: Thẻ được tính từ thời điểm thanh toán (12–36 tháng tùy danh mục), mỗi thiết bị có mã Serial dạng BH-MãĐơn-MãSP-SốThiếtBị. Bạn cần đăng nhập để tra cứu đơn hàng của mình. [Tra cứu bảo hành](warranty.html)");
         }
 
         if (isRepair) {

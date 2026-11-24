@@ -26,7 +26,7 @@ public class Products {
     private String slug;
     private BigDecimal price;
     private String specs;
-    @Column(columnDefinition = "NVARCHAR(MAX)")
+    @Column(columnDefinition = "TEXT")
     private String image;
     private String description;
 }

@@ -1,6 +1,6 @@
 package com.example.MyProject.ORDER.entity;
 
-
+import com.example.MyProject.PRODUCT.entity.Branch;
 import com.example.MyProject.PRODUCT.entity.Products;
 import jakarta.persistence.*;
 import lombok.AllArgsConstructor;
@@ -29,6 +29,10 @@ public class OrderItem {
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "product_id", nullable = false)
     private Products products;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "branch_id")
+    private Branch branch;
 
     @Column(nullable = false)
     private Integer quantity;

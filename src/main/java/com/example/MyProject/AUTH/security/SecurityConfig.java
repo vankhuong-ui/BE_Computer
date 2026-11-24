@@ -106,14 +106,21 @@ public class SecurityConfig {
                         // Public APIs
                         // --------------------------------
                         .requestMatchers(
+                                "/v3/api-docs",
+                                "/swagger-ui.html",
                                 "/api/v1/auth/**",
+                                "/api/branches",
+                                "/api/vouchers/available",
                                 "/api/inventory/{id_product}/user",
+                                "/api/inventory/{id_product}/branches",
                                 "/api/brands",
                                 "/api/brands/search",
                                 "/api/categories",
                                 "/api/reviews/product/{product_id}",
                                 "/api/products",
+                                "/api/products/catalog",
                                 "/api/products/search",
+                                "/api/products/slug/*",
                                 "/api/products/{id}/detailproduct",
                                 "/api/products/*/product_brands",
                                 "/api/products/*/product_categories",
@@ -121,7 +128,6 @@ public class SecurityConfig {
                                 "/api/chat",
                                 "/api/online",
                                 "/api/payment/sepay-webhook",
-                                "/api/warranty/lookup",
                                 "/api/repairs"
                         ).permitAll()
 

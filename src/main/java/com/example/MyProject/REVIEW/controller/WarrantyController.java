@@ -25,6 +25,7 @@ public class WarrantyController extends BaseController {
 
     // 1. Tra cứu công khai phiếu bảo hành điện tử theo Mã Serial (BH-orderId-productId) hoặc Mã đơn hàng
     @GetMapping("/lookup")
+    @PreAuthorize("hasAnyAuthority('USER', 'ADMIN', 'ROLE_USER', 'ROLE_ADMIN')")
     public ApiResponse<List<WarrantyCardResponse>> lookupWarranty(
             @RequestParam("keyword") String keyword
     ) {

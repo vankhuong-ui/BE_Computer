@@ -10,6 +10,7 @@ public record WarrantyClaimResponse(
         String productImage,
         Long accountId,
         String customerEmail,
+        Integer unitNumber,
         String serialCode,
         String issueType,
         String description,

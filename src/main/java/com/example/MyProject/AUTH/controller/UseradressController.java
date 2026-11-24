@@ -6,7 +6,6 @@ import com.example.MyProject.AUTH.service.UseraddressService;
 import com.example.MyProject.PRODUCT.common.ApiResponse;
 import com.example.MyProject.PRODUCT.common.BaseController;
 import lombok.RequiredArgsConstructor;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
@@ -20,7 +19,6 @@ import java.util.List;
 @RequiredArgsConstructor
 @RequestMapping("/api/useraddresses")
 public class UseradressController extends BaseController {
-    @Autowired
     private final UseraddressService useraddressService;
 
     @GetMapping("/user")

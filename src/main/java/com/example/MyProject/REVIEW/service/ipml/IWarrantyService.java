@@ -22,7 +22,12 @@ import org.springframework.transaction.annotation.Transactional;
 import java.time.Duration;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Comparator;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Locale;
+import java.util.Map;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -57,17 +62,26 @@ public class IWarrantyService implements WarrantyService {
         if (keyword == null || keyword.isBlank()) {
             throw new RuntimeException("Vui lòng nhập mã bảo hành (Serial) hoặc mã đơn hàng");
         }
-        String clean = keyword.trim().toUpperCase();
+        String clean = keyword.trim().toUpperCase(Locale.ROOT);
 
-        // Hỗ trợ tìm theo mã BH dạng BH-{orderId}-{productId} hoặc mã đơn hàng số / DH{orderId}
+        Account account = (Account) SecurityContextHolder.getContext().getAuthentication().getPrincipal();
+        boolean isAdmin = account.getRole() != null
+                && Arrays.stream(account.getRole().split(","))
+                .map(String::trim)
+                .anyMatch(role -> "ADMIN".equalsIgnoreCase(role) || "ROLE_ADMIN".equalsIgnoreCase(role));
+
         Long orderId = null;
         Long filterProductId = null;
+        Integer filterUnitNumber = null;
 
-        Pattern bhPattern = Pattern.compile("BH-(\\d+)-(\\d+)");
+        Pattern bhPattern = Pattern.compile("^BH-(\\d+)-(\\d+)(?:-(\\d+))?$");
         Matcher bhMatcher = bhPattern.matcher(clean);
-        if (bhMatcher.find()) {
+        if (bhMatcher.matches()) {
             orderId = Long.parseLong(bhMatcher.group(1));
             filterProductId = Long.parseLong(bhMatcher.group(2));
+            if (bhMatcher.group(3) != null) {
+                filterUnitNumber = Integer.parseInt(bhMatcher.group(3));
+            }
         } else {
             Pattern numPattern = Pattern.compile("(\\d+)");
             Matcher numMatcher = numPattern.matcher(clean);
@@ -80,19 +94,20 @@ public class IWarrantyService implements WarrantyService {
             return List.of();
         }
 
-        List<Orders> orders = ordersRepository.findAllOrdersWithDetails(List.of(orderId));
-        if (orders.isEmpty()) {
-            return List.of();
-        }
-
-        Orders order = orders.get(0);
+        Orders order = (isAdmin
+                ? ordersRepository.findByIdWithDetails(orderId)
+                : ordersRepository.findByIdAndAccountIdWithDetails(orderId, account.getId()))
+                .orElse(null);
+        if (order == null) return List.of();
         if (!"COMPLETED".equalsIgnoreCase(order.getStatus()) && !"PAID".equalsIgnoreCase(order.getStatus())) {
             return List.of();
         }
 
         Long finalFilterProductId = filterProductId;
+        Integer finalFilterUnitNumber = filterUnitNumber;
         return buildCardsFromOrder(order).stream()
                 .filter(c -> finalFilterProductId == null || c.productId().equals(finalFilterProductId))
+                .filter(c -> finalFilterUnitNumber == null || c.unitNumber().equals(finalFilterUnitNumber))
                 .toList();
     }
 
@@ -107,9 +122,13 @@ public class IWarrantyService implements WarrantyService {
         if (request.description() == null || request.description().isBlank()) {
             throw new RuntimeException("Vui lòng mô tả chi tiết tình trạng lỗi của thiết bị");
         }
+        int unitNumber = request.unitNumber() != null ? request.unitNumber() : 1;
+        if (unitNumber < 1) {
+            throw new RuntimeException("Số thứ tự thiết bị phải lớn hơn 0");
+        }
         String normalizedPhone = PhoneValidator.validateAndNormalize(request.contactPhone());
 
-        Orders order = ordersRepository.findByIdAndAccountIdWithDetails(request.orderId(), account.getId())
+        Orders order = ordersRepository.findForWarrantyClaimByIdAndAccountId(request.orderId(), account.getId())
                 .orElseThrow(() -> new RuntimeException("Đơn hàng không tồn tại hoặc không thuộc tài khoản của bạn"));
 
         if (!"COMPLETED".equalsIgnoreCase(order.getStatus()) && !"PAID".equalsIgnoreCase(order.getStatus())) {
@@ -122,29 +141,38 @@ public class IWarrantyService implements WarrantyService {
                 .orElseThrow(() -> new RuntimeException("Sản phẩm không tồn tại trong đơn hàng này"));
 
         Products product = matchedItem.getProducts();
-        LocalDateTime purchaseDate = order.getCreatedAt() != null ? order.getCreatedAt() : LocalDateTime.now();
+        int productQuantity = order.getOrderItems().stream()
+                .filter(item -> item.getProducts() != null && item.getProducts().getId().equals(request.productId()))
+                .mapToInt(item -> item.getQuantity() != null ? item.getQuantity() : 0)
+                .sum();
+        if (unitNumber > productQuantity) {
+            throw new RuntimeException("Số thứ tự thiết bị không tồn tại trong đơn hàng");
+        }
+        LocalDateTime purchaseDate = getWarrantyStartDate(order);
         int warrantyMonths = resolveWarrantyMonths(product);
         LocalDateTime expireDate = purchaseDate.plusMonths(warrantyMonths);
 
-        if (expireDate.isBefore(LocalDateTime.now())) {
+        if (!expireDate.isAfter(LocalDateTime.now())) {
             throw new RuntimeException("Sản phẩm này đã hết thời hạn bảo hành vào ngày " + expireDate.toLocalDate());
         }
 
         // Kiểm tra xem có yêu cầu bảo hành nào đang xử lý không
-        warrantyClaimRepository.findFirstByOrderIdAndProductIdAndStatusIn(
+        warrantyClaimRepository.findFirstByOrderIdAndProductIdAndUnitNumberAndStatusIn(
                 order.getId(),
                 product.getId(),
+                unitNumber,
                 List.of("PENDING", "RECEIVED", "REPAIRING")
         ).ifPresent(existing -> {
-            throw new RuntimeException("Sản phẩm này đang có một yêu cầu bảo hành đang được xử lý (Mã #" + existing.getId() + ")");
+            throw new RuntimeException("Thiết bị này đang có một yêu cầu bảo hành đang được xử lý (Mã #" + existing.getId() + ")");
         });
 
-        String serialCode = buildSerialCode(order.getId(), product.getId());
+        String serialCode = buildSerialCode(order.getId(), product.getId(), unitNumber);
 
         WarrantyClaim claim = WarrantyClaim.builder()
                 .order(order)
                 .product(product)
                 .account(account)
+                .unitNumber(unitNumber)
                 .serialCode(serialCode)
                 .issueType(request.issueType() != null && !request.issueType().isBlank() ? request.issueType() : "Lỗi phần cứng / Kỹ thuật")
                 .description(request.description().trim())
@@ -176,15 +204,16 @@ public class IWarrantyService implements WarrantyService {
     @Transactional
     @Override
     public WarrantyClaimResponse updateClaimStatus(Long id, String status, String adminNote) {
-        List<String> validStatuses = List.of("PENDING", "RECEIVED", "REPAIRING", "COMPLETED", "REJECTED");
-        String upperStatus = status != null ? status.trim().toUpperCase() : "";
-        if (!validStatuses.contains(upperStatus)) {
-            throw new RuntimeException("Trạng thái bảo hành không hợp lệ: " + status);
-        }
+        String upperStatus = status != null ? status.trim().toUpperCase(Locale.ROOT) : "";
 
         WarrantyClaim claim = warrantyClaimRepository.findById(id)
                 .orElseThrow(() -> new RuntimeException("Không tìm thấy phiếu yêu cầu bảo hành #" + id));
 
+        String currentStatus = claim.getStatus() != null ? claim.getStatus().trim().toUpperCase(Locale.ROOT) : "";
+        if (!currentStatus.equals(upperStatus) && !allowedClaimTransitions(currentStatus).contains(upperStatus)) {
+            throw new RuntimeException("Không thể chuyển trạng thái bảo hành từ "
+                    + currentStatus + " sang " + upperStatus);
+        }
         claim.setStatus(upperStatus);
         if (adminNote != null) {
             claim.setAdminNote(adminNote.trim());
@@ -199,10 +228,13 @@ public class IWarrantyService implements WarrantyService {
         if (order.getOrderItems() == null) {
             return result;
         }
-        LocalDateTime purchaseDate = order.getCreatedAt() != null ? order.getCreatedAt() : LocalDateTime.now();
+        LocalDateTime purchaseDate = getWarrantyStartDate(order);
         LocalDateTime now = LocalDateTime.now();
+        Map<Long, Integer> nextUnitByProduct = new HashMap<>();
 
-        for (OrderItem item : order.getOrderItems()) {
+        for (OrderItem item : order.getOrderItems().stream()
+                .sorted(Comparator.comparing(item -> item.getId() == null ? Long.MAX_VALUE : item.getId()))
+                .toList()) {
             Products p = item.getProducts();
             if (p == null) continue;
 
@@ -210,27 +242,48 @@ public class IWarrantyService implements WarrantyService {
             LocalDateTime expireDate = purchaseDate.plusMonths(months);
             long remainingDays = Math.max(0, Duration.between(now, expireDate).toDays());
             String status = expireDate.isAfter(now) ? "ACTIVE" : "EXPIRED";
-
-            result.add(new WarrantyCardResponse(
-                    order.getId(),
-                    p.getId(),
-                    p.getNameProduct(),
-                    p.getImage(),
-                    item.getQuantity(),
-                    buildSerialCode(order.getId(), p.getId()),
-                    purchaseDate,
-                    expireDate,
-                    months,
-                    remainingDays,
-                    status
-            ));
+            int quantity = item.getQuantity() != null ? item.getQuantity() : 0;
+            int firstUnitNumber = nextUnitByProduct.getOrDefault(p.getId(), 0) + 1;
+            for (int unitNumber = firstUnitNumber; unitNumber < firstUnitNumber + quantity; unitNumber++) {
+                result.add(new WarrantyCardResponse(
+                        order.getId(),
+                        p.getId(),
+                        p.getNameProduct(),
+                        p.getImage(),
+                        1,
+                        unitNumber,
+                        buildSerialCode(order.getId(), p.getId(), unitNumber),
+                        purchaseDate,
+                        expireDate,
+                        months,
+                        remainingDays,
+                        status
+                ));
+            }
+            nextUnitByProduct.put(p.getId(), firstUnitNumber + quantity - 1);
         }
         return result;
     }
 
+    private LocalDateTime getWarrantyStartDate(Orders order) {
+        if (order.getPaidAt() == null) {
+            throw new RuntimeException("Đơn hàng chưa có thời điểm thanh toán được ghi nhận");
+        }
+        return order.getPaidAt();
+    }
+
+    private List<String> allowedClaimTransitions(String currentStatus) {
+        return switch (currentStatus) {
+            case "PENDING" -> List.of("RECEIVED", "REJECTED");
+            case "RECEIVED" -> List.of("REPAIRING", "COMPLETED", "REJECTED");
+            case "REPAIRING" -> List.of("COMPLETED", "REJECTED");
+            default -> List.of();
+        };
+    }
+
     private int resolveWarrantyMonths(Products product) {
         if (product.getCategories() != null && product.getCategories().getNameCategories() != null) {
-            String cat = product.getCategories().getNameCategories().toLowerCase();
+            String cat = product.getCategories().getNameCategories().toLowerCase(Locale.ROOT);
             if (cat.contains("cpu") || cat.contains("main") || cat.contains("vga") || cat.contains("ram")) {
                 return 36;
             }
@@ -241,8 +294,8 @@ public class IWarrantyService implements WarrantyService {
         return DEFAULT_WARRANTY_MONTHS;
     }
 
-    private String buildSerialCode(Long orderId, Long productId) {
-        return String.format("BH-%d-%d", orderId, productId);
+    private String buildSerialCode(Long orderId, Long productId, int unitNumber) {
+        return String.format("BH-%d-%d-%d", orderId, productId, unitNumber);
     }
 
     private WarrantyClaimResponse toResponse(WarrantyClaim claim) {
@@ -254,6 +307,7 @@ public class IWarrantyService implements WarrantyService {
                 claim.getProduct() != null ? claim.getProduct().getImage() : null,
                 claim.getAccount() != null ? claim.getAccount().getId() : null,
                 claim.getAccount() != null ? claim.getAccount().getGmail() : null,
+                claim.getUnitNumber(),
                 claim.getSerialCode(),
                 claim.getIssueType(),
                 claim.getDescription(),

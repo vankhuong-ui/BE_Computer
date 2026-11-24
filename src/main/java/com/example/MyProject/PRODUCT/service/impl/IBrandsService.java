@@ -7,9 +7,6 @@ import com.example.MyProject.PRODUCT.mapper.BrandsMapper;
 import com.example.MyProject.PRODUCT.repository.BrandsRepository;
 import com.example.MyProject.PRODUCT.service.BrandsService;
 import lombok.RequiredArgsConstructor;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.data.domain.Page;
-import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 
 import java.util.List;
@@ -18,9 +15,7 @@ import java.util.stream.Collectors;
 @Service
 @RequiredArgsConstructor
 public class IBrandsService implements BrandsService {
-    @Autowired
     private final BrandsRepository brandsRepository;
-    @Autowired
     private final BrandsMapper brandsMapper;
 
     @Override

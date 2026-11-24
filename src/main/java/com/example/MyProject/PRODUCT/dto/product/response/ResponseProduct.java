@@ -10,9 +10,13 @@ public record ResponseProduct(
         String specs,
         String image,
         String description,
-
-        // Trả về tên hãng và tên danh mục dưới dạng chữ (ví dụ: "ASUS", "Laptop")
         Long brandsId,
-        Long categoriesId
+        Long categoriesId,
+        String brandsName,
+        String categoriesName,
+        String groupType,
+        Integer totalStock,
+        Integer locationStock,
+        Integer availableBranchCount
 ) {
 }

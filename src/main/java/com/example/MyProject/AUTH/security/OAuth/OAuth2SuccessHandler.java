@@ -8,6 +8,7 @@ import com.example.MyProject.AUTH.security.service.RefreshTokenService;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.ResponseCookie;
 import org.springframework.security.core.Authentication;
@@ -17,6 +18,7 @@ import org.springframework.stereotype.Component;
 
 import java.io.IOException;
 
+@Slf4j
 @Component
 @RequiredArgsConstructor
 public class OAuth2SuccessHandler implements AuthenticationSuccessHandler {
@@ -139,19 +141,7 @@ public class OAuth2SuccessHandler implements AuthenticationSuccessHandler {
                 cookie.toString()
         );
 
-        // ==============================
-        // DEBUG
-        // ==============================
-
-        System.out.println("================================");
-        System.out.println("GOOGLE LOGIN SUCCESS");
-        System.out.println("Account ID: " + account.getId());
-        System.out.println("Gmail: " + account.getGmail());
-        System.out.println("Google ID: " + account.getGoogleid());
-        System.out.println("Role: " + account.getRole());
-        System.out.println("AccessToken created");
-        System.out.println("RefreshToken created");
-        System.out.println("================================");
+        log.info("Google OAuth2 login success: accountId={}, role={}", account.getId(), account.getRole());
 
         // ==============================
         // REDIRECT FRONTEND

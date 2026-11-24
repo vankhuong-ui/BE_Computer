@@ -38,6 +38,10 @@ public class WarrantyClaim {
     @Column(name = "serial_code", nullable = false, length = 100)
     private String serialCode;
 
+    @Column(name = "unit_number", nullable = false)
+    @Builder.Default
+    private Integer unitNumber = 1;
+
     @Column(name = "issue_type", nullable = false, length = 100)
     private String issueType;
 

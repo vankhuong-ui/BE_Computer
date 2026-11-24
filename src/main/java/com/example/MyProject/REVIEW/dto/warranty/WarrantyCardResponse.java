@@ -8,6 +8,7 @@ public record WarrantyCardResponse(
         String productName,
         String productImage,
         Integer quantity,
+        Integer unitNumber,
         String serialCode,
         LocalDateTime purchaseDate,
         LocalDateTime expireDate,

@@ -173,7 +173,10 @@ class ChatbotHybridTest {
         assertThat(stockReply).contains("Chuột Logitech G304").contains("Tạm hết hàng");
 
         String warrantyReply = chatbotService.chat("Chính sách bảo hành điện tử thế nào?");
-        assertThat(warrantyReply).contains("12–36 tháng").contains("BH-MãĐơn-MãSP").contains("warranty.html");
+        assertThat(warrantyReply).contains("12–36 tháng")
+                .contains("BH-MãĐơn-MãSP-SốThiếtBị")
+                .contains("đăng nhập")
+                .contains("warranty.html");
 
         String repairReply = chatbotService.chat("Mình muốn đặt lịch sửa chữa laptop tận nơi");
         assertThat(repairReply).contains("tận nơi").contains("support.html");

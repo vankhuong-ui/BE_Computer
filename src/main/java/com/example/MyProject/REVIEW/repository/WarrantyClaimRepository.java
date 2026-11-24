@@ -26,9 +26,10 @@ public interface WarrantyClaimRepository extends JpaRepository<WarrantyClaim, Lo
     @EntityGraph(attributePaths = {"order", "product", "account"})
     List<WarrantyClaim> findBySerialCodeContainingIgnoreCase(String serialCode);
 
-    Optional<WarrantyClaim> findFirstByOrderIdAndProductIdAndStatusIn(
+    Optional<WarrantyClaim> findFirstByOrderIdAndProductIdAndUnitNumberAndStatusIn(
             Long orderId,
             Long productId,
+            Integer unitNumber,
             List<String> statuses
     );
 }
