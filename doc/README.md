@@ -20,7 +20,7 @@ Chào mừng đến với bộ tài liệu kỹ thuật của **HK COMPUTER** �
 | Tầng | Công nghệ | Vai trò trong dự án |
 | :--- | :--- | :--- |
 | **Backend** | Java 21, Spring Boot 4.1, Spring Security, Spring Data JPA | RESTful API, phân quyền RBAC (`USER`, `ADMIN`), xử lý nghiệp vụ |
-| **Database** | PostgreSQL 16 + Flyway Migration (`V1` → `V19`) | Lưu trữ 17 bảng dữ liệu quan hệ, quản lý phiên bản schema tự động |
+| **Database** | PostgreSQL 16 + Flyway Migration (`V1` → `V20`) | Lưu trữ 16 bảng dữ liệu quan hệ (đã tinh gọn, gỡ bảng Voucher, chuẩn 3 chi nhánh trọng điểm) |
 | **Cache & OTP** | Redis (Upstash TLS / Docker Redis) | Lưu mã OTP xác thực email (TTL 5 phút) và đồng bộ nhanh giỏ hàng (`cart:{accountId}`) |
 | **Real-time** | Spring WebSocket (STOMP + SockJS) | Đẩy thông báo thanh toán SePay (`/topic/payment/{orderId}`) và biến động tồn kho (`/topic/inventory/{id}`) |
 | **AI & Tích hợp ngoài** | Groq OpenAI-compatible API, SePay Webhook/VietQR, VNPay, Brevo SMTP API, Google OAuth2 | Chatbot tư vấn, thanh toán tự động, gửi email OTP, đăng nhập Google |
@@ -52,13 +52,12 @@ Chào mừng đến với bộ tài liệu kỹ thuật của **HK COMPUTER** �
 | **Tài khoản & Bảo mật** | Đăng nhập Google OAuth2 & Đặt/Đổi mật khẩu | Hoàn thành | Redirect động theo `app.frontend-url` |
 | **Sản phẩm & Kho** | Quản lý Thương hiệu, Danh mục (`LAPTOP`/`PC`/`ACCESSORY`), Sản phẩm | Hoàn thành | Hỗ trợ lọc đa tiêu chí, khoảng giá, từ khóa |
 | **Sản phẩm & Kho** | Quản lý Chi nhánh (`branches`) & Tồn kho Đa cơ sở + Chuyển kho | Hoàn thành | Ràng buộc `UNIQUE(product_id, branch_id)` + WebSocket tồn kho |
-| **Đơn hàng & Khuyến mãi** | Giỏ hàng (PostgreSQL + Redis), Voucher (`FIXED`/`PERCENT`, đơn đầu) | Hoàn thành | Khóa nguyên tử SQL Voucher, tự dọn giỏ hàng khi đặt đơn & hủy đơn treo >30 phút |
-| **Đơn hàng & Khuyến mãi** | Đặt hàng Giao tận nơi (`HOME_DELIVERY`) & Nhận tại quầy (`STORE_PICKUP`) | Hoàn thành | Tự động phân bổ kho ưu tiên chi nhánh/thành phố + Email biên nhận bất đồng bộ |
-| **Thanh toán** | VietQR SePay + Webhook tự động + WebSocket real-time | Hoàn thành | Idempotency `SEPAY_{id}`, kiểm tra API Key & gửi Email kích hoạt Serial bảo hành |
-| **Thanh toán** | Cổng thanh toán VNPay Sandbox (HMAC-SHA512) | Hoàn thành | Đối chiếu chữ ký số, tổng tiền đơn hàng & gửi Email biên nhận |
-| **AI & Hậu mãi** | AI Chatbot Hybrid (Groq `qwen/qwen3.8-27b` + Fallback DB + 3 lớp Guardrail) | Hoàn thành | Có Rate Limit + bộ nhớ hội thoại ngắn hạn trên Redis (`chat:hist:{session}`) |
-| **AI & Hậu mãi** | Bảo hành điện tử, Đặt lịch sửa chữa (`AT_STORE`/`AT_HOME`), Đánh giá, Hỗ trợ | Hoàn thành | Đầy đủ giao diện Khách hàng & bảng điều khiển Admin |
-| **Quản trị BI & UI/UX** | Cổng Admin **Creative Tim Paper Dashboard** + So sánh 2–3 SP + Mobile Bottom Nav | Hoàn thành | API `GET /api/admin/dashboard/summary`, Swagger `/swagger-ui.html`, chuẩn `360px`+ |
+| **Đơn hàng & Giỏ hàng** | Giỏ hàng (PostgreSQL + Redis), Đặt hàng `HOME_DELIVERY` & `STORE_PICKUP` | Hoàn thành | Tự động phân bổ kho 3 chi nhánh, tự dọn giỏ hàng khi đặt đơn & hủy đơn treo >30 phút |
+| **Thanh toán** | VietQR SePay + Webhook tự động + WebSocket real-time | Hoàn thành | Idempotency `SEPAY_{id}`, kiểm tra API Key & gửi Email biên nhận + Serial bảo hành |
+| **Thanh toán** | Cổng thanh toán VNPay Sandbox (HMAC-SHA512) | Hoàn thành | Đối chiếu chữ ký số, tổng tiền đơn hàng & kích hoạt bảo hành điện tử |
+| **AI & Hậu mãi** | AI Chatbot Hybrid (Groq `qwen/qwen3.8-27b` + Tồn kho theo chi nhánh + 3 lớp Guardrail) | Hoàn thành | 12/12 unit test pass, bộ nhớ hội thoại Redis, giao diện Quick Chips & Typing Indicator |
+| **AI & Hậu mãi** | Bảo hành điện tử & Đặt lịch sửa chữa (`AT_STORE` / `AT_HOME`), Đánh giá, Hỗ trợ | Hoàn thành | Thanh tiến trình thời hạn bảo hành, Timeline 4 bước cho Khách & bộ lọc/mẫu ghi chú KTV cho Admin |
+| **Quản trị BI & UI/UX** | Cổng Admin **Creative Tim Paper Dashboard** + So sánh Laptop/PC + Mobile Bottom Nav | Hoàn thành | API `GET /api/admin/dashboard/summary`, chuẩn tách lớp 3 tầng, mượt từ `360px`+ |
 | **Triển khai Cloud** | CI/CD Render (Backend Docker) + Vercel (`vankhuongdev.id.vn`) + Neon + Upstash | Hoàn thành | Tối ưu cache Docker layer & Google Maven Central mirror |
 
 ---

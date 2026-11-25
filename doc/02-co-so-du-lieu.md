@@ -1,6 +1,6 @@
-# 02. Thiết Kế Cơ Sở Dữ Liệu (PostgreSQL & Flyway `V1` → `V19`)
+# 02. Thiết Kế Cơ Sở Dữ Liệu (PostgreSQL & Flyway `V1` → `V20`)
 
-Hệ thống sử dụng **PostgreSQL 16** kết hợp **Flyway Migration** tự động kiểm tra và nâng cấp lược đồ (`spring.jpa.hibernate.ddl-auto=validate`). Tổng cộng hệ thống gồm **17 bảng nghiệp vụ** (không tính bảng lịch sử `flyway_schema_history`), chia thành 4 phân hệ rõ ràng.
+Hệ thống sử dụng **PostgreSQL 16** kết hợp **Flyway Migration** tự động kiểm tra và nâng cấp lược đồ (`V1` → `V20`). Tổng cộng hệ thống hiện vận hành với **16 bảng nghiệp vụ** (đã lược bỏ bảng `vouchers` và gom về **3 chi nhánh trọng điểm** tại `V20__focus_core_branches_and_drop_vouchers.sql`), chia thành 4 phân hệ rõ ràng.
 
 ---
 
@@ -22,7 +22,6 @@ erDiagram
 
     user_addresses ||--o{ orders : "giao tới"
     branches ||--o{ orders : "nhận tại quầy"
-    vouchers ||--o{ orders : "áp mã giảm"
 
     orders ||--|{ order_items : "gồm các dòng"
     products ||--o{ order_items : "được mua"
@@ -80,24 +79,11 @@ erDiagram
         int soluong
         int selled
     }
-    vouchers {
-        bigint id PK
-        varchar code UK
-        varchar discount_type
-        decimal discount_value
-        decimal min_order_amount
-        boolean first_order_only
-        int usage_limit
-        int used_count
-        boolean active
-    }
     orders {
         bigint id PK
         bigint useraddresses_id FK
         bigint pickup_branch_id FK
-        bigint voucher_id FK
         varchar fulfillment_type
-        decimal discount_amount
         decimal total_amount
         varchar status
         timestamp created_at

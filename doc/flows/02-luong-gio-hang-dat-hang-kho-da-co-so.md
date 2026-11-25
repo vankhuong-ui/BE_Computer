@@ -1,16 +1,15 @@
-# Luồng 02 — Giỏ Hàng (DB + Redis), Voucher & Đặt Hàng Đa Cơ Sở
+# Luồng 02 — Giỏ Hàng (DB + Redis) & Đặt Hàng Kho 3 Chi Nhánh Trọng Điểm
 
-Tài liệu này mô tả luồng đồng bộ giỏ hàng hai tầng (PostgreSQL + Redis), kiểm tra mã giảm giá (Voucher), thuật toán phân bổ tồn kho đa chi nhánh khi đặt hàng và cơ chế hoàn kho tự động khi hủy đơn.
+Tài liệu này mô tả luồng đồng bộ giỏ hàng hai tầng (PostgreSQL + Redis), thuật toán phân bổ tồn kho trên **3 chi nhánh trọng điểm (Hà Nội · TP.HCM · Đà Nẵng)** khi đặt hàng và cơ chế hoàn kho tự động khi hủy đơn hoặc đơn treo quá hạn.
 
 ---
 
 ## 1. Các thành phần tham gia trong Code
 
 - **Giỏ hàng:** `CartController.java`, `ICartService.java`, `IRedisCartService.java`, `CartRepository.java`
-- **Khuyến mãi (Voucher):** `VoucherController.java`, `VoucherService.java`, `IVoucherService.java`, `VoucherRepository.java`
 - **Tồn kho & Chi nhánh:** `BranchController.java`, `BranchService.java`, `IBranchService.java`, `InventoryController.java`, `IInventoryService.java`, `InventoryWebSocketService.java`
 - **Đơn hàng & Cron:** `OrderController.java`, `IOrdersService.java`, `OrderExpirationScheduler.java`, `OrderNotificationService.java`, `OrdersRepository.java`
-- **Frontend:** `cart.html`, `checkout.html`, `order.html`, `admin-inventory.html`, `admin-vouchers.html`, `admin-orders.html`
+- **Frontend:** `cart.html`, `checkout.html`, `order.html`, `admin-inventory.html`, `admin-orders.html`
 
 ---
 

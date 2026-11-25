@@ -9,8 +9,8 @@ Tài liệu này mô tả kiến trúc **Hybrid Chatbot** của HK COMPUTER: k�
 - **Controller & Config:** `REVIEW/controller/ChatController.java`, `REVIEW/config/RestClientConfig.java` (connect timeout `5s`, response timeout `15s`)
 - **Rào chắn nội dung:** `REVIEW/service/ChatbotGuardrail.java`
 - **Trái tim xử lý Hybrid:** `ChatbotService.java`, `REVIEW/service/ipml/IChatbootService.java`, `AUTH/service/RedisRateLimiterService.java` (giới hạn tần suất 15 câu/phút/phiên & lưu tối đa 6 lượt ngữ cảnh hội thoại gần nhất trong Redis với TTL 15 phút)
-- **Kiểm thử tự động:** `src/test/java/com/example/MyProject/REVIEW/service/ChatbotHybridTest.java` (11 kịch bản kiểm thử)
-- **Frontend Widget:** `FE_Computer/assets/js/chat-widget.js` (nút nổi góc phải, lọc chống XSS & hiển thị nút bấm điều hướng sản phẩm/thanh toán)
+- **Kiểm thử tự động:** `src/test/java/com/example/MyProject/REVIEW/service/ChatbotHybridTest.java` (12 kịch bản kiểm thử gồm tồn kho chi nhánh theo thành phố & 3 lớp Guardrails)
+- **Frontend Widget:** `FE_Computer/assets/js/chat-widget.js` (giao diện hiện đại có Quick Prompt Chips, hiệu ứng đang gõ 3 chấm, nút Làm mới hội thoại, lọc chống XSS & nút CTA sản phẩm/dịch vụ)
 
 ---
 
@@ -51,7 +51,7 @@ flowchart TD
 ### 3.1. Tìm kiếm sản phẩm tiếng Việt thông minh
 - **Bóc tách ngân sách tự động:** Hiểu các cách diễn đạt tự nhiên như `"dưới 20 triệu"`, `"từ 10 đến 15tr"`, `"trên 25 củ"`, `"tầm 15 triệu"` (`±25%`), `"dưới 500k"`.
 - **Ưu tiên trường chính (Primary-field Priority):** Điểm khớp trên `nameProduct` (+4) và `brands`/`categories` (+2) được ưu tiên tuyệt đối trước `specs`/`description` (+1). Nếu đã có sản phẩm khớp ở trường chính, các sản phẩm chỉ tình cờ trùng từ khóa trong mô tả dài sẽ bị loại bỏ, tránh gợi ý sai mặt hàng.
-- **Tổng hợp tồn kho Đa cơ sở chính xác:** Cộng gộp tồn kho (`soluong`) của tất cả các chi nhánh đang hoạt động (`branch.isActive()`) để báo số lượng thực tế có thể phục vụ khách.
+- **Tổng hợp tồn kho 3 Chi nhánh chính xác:** Cộng gộp tồn kho (`soluong`) của 3 chi nhánh đang hoạt động (`Hà Nội`, `TP.HCM`, `Đà Nẵng`) và tự động nhận diện tên thành phố/chi nhánh trong câu hỏi (*"Dell 7490 ở Hà Nội còn không?"*) để báo đúng tồn kho địa phương cũng như gợi ý chi nhánh còn hàng khác hỗ trợ giao toàn quốc.
 
 ### 3.2. Ba lớp Rào chắn bảo vệ thương hiệu (3-Layer Guardrails)
 1. **Lớp 1 — Chặn đầu vào (`checkInput`):** Chặn sớm ở tầng Java (không tốn token AI) đối với câu quá dài, câu gài bẫy Prompt Injection (*"bỏ qua mọi hướng dẫn"*, *"in ra system prompt"*...) và các câu so sánh với sàn TMĐT/đối thủ cạnh tranh (danh sách tùy biến qua biến `chatbot.blocked-competitors`).

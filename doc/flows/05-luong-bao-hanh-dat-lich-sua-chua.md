@@ -6,8 +6,8 @@ Tài liệu này mô tả các luồng dịch vụ kỹ thuật và chăm sóc s
 
 ## 1. Các thành phần tham gia trong Code
 
-- **Bảo hành điện tử:** `WarrantyController.java`, `IWarrantyService.java`, `WarrantyClaimRepository.java`, `WarrantyClaim.java`
-- **Đặt lịch sửa chữa:** `RepairBookingController.java`, `IRepairBookingService.java`, `RepairBookingRepository.java`, `RepairBooking.java`
+- **Bảo hành điện tử:** `WarrantyController.java`, `IWarrantyService.java`, `WarrantyClaimRepository.java`, `WarrantyClaim.java`, `warranty.html` (hiển thị thanh tiến trình thời hạn bảo hành + timeline 4 bước), `admin-warranty.html` (bộ lọc trạng thái, tìm nhanh & mẫu ghi chú KTV)
+- **Đặt lịch sửa chữa:** `RepairBookingController.java`, `IRepairBookingService.java`, `RepairBookingRepository.java`, `RepairBooking.java`, `profile.html` (timeline 4 bước theo dõi tiến độ sửa chữa), `admin-repairs.html` (bộ lọc hình thức `AT_STORE`/`AT_HOME`, trạng thái & mẫu ghi chú KTV)
 - **Đánh giá sản phẩm:** `ReviewController.java`, `IReviewService.java`, `ReviewRepository.java`, `detailproductuser.html`, `order.html`, `review.html`
 - **Hỗ trợ khách hàng:** `SupportController.java`, `ISupportService.java`, `SupportRepository.java`, `support.html`, `admin-support.html`
 

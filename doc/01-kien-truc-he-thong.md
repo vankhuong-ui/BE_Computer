@@ -55,25 +55,25 @@ Mã nguồn trong `src/main/java/com/example/MyProject` được tổ chức the
 ```text
 com.example.MyProject
 ├── MyProjectApplication.java       # Điểm khởi chạy (@EnableScheduling, @EnableAsync) & seed dữ liệu mẫu idempotent
-├── AUTH/                           # Phân hệ Tài khoản, Xác thực, Sổ địa chỉ & OpenAPI Explorer
+├── AUTH/                           # Phân hệ Tài khoản, Xác thực & Sổ địa chỉ
 │   ├── common/                     # ApiResponse, BaseController, PhoneValidator (chuẩn SĐT 10 số VN)
 │   ├── config/                     # RedisConfig
-│   ├── controller/                 # AccountController, UseradressController, OpenApiDocController, TestAuthController
+│   ├── controller/                 # AccountController, UseradressController
 │   ├── security/                   # SecurityConfig, JwtService, JwtAuthenticationFilter, OAuth2, EmailVerificationService
 │   ├── service/ & impl/            # AccountService/IAccountService, UseraddressService/IUseraddressService,
-│   │                               # OpenApiDocService/IOpenApiDocService, RedisRateLimiterService, IRedisOtpService
+│   │                               # RedisRateLimiterService, IRedisOtpService
 │   └── exception/                  # GlobalExceptionHandler, CustomAuthenticationEntryPoint, CustomAccessDeniedHandler
-├── PRODUCT/                        # Phân hệ Danh mục, Thương hiệu, Sản phẩm & Kho Đa Cơ Sở
+├── PRODUCT/                        # Phân hệ Danh mục, Thương hiệu, Sản phẩm & Kho 3 Chi Nhánh Trọng Điểm
 │   ├── config/                     # WebSocketConfig (/ws, broker /topic)
 │   ├── controller/                 # ProductController, CategoriesController, BrandsController, BranchController, InventoryController
 │   └── service/ & impl/            # ProductService/IProductService (hỗ trợ cả ID & slug), BranchService/IBranchService,
 │                                   # InventoryService/IInventoryService, InventoryWebSocketService
-├── ORDER/                          # Phân hệ Giỏ hàng, Voucher, Đơn hàng, Thanh toán & Admin BI Dashboard
+├── ORDER/                          # Phân hệ Giỏ hàng, Đơn hàng, Thanh toán (SePay + VNPay) & Admin BI Dashboard
 │   ├── config/                     # SePayConfig, VNPayConfig
-│   ├── controller/                 # CartController, VoucherController, OrderController, PaymentController, AdminDashboardController
-│   └── service/ & impl/            # CartService/ICartService, RedisCartService, VoucherService/IVoucherService,
-│                                   # OrdersService/IOrdersService, PaymentService/IPaymentService,
-│                                   # AdminDashboardService/IAdminDashboardService, OrderExpirationScheduler, OrderNotificationService
+│   ├── controller/                 # CartController, OrderController, PaymentController, AdminDashboardController
+│   └── service/ & impl/            # CartService/ICartService, RedisCartService, OrdersService/IOrdersService,
+│                                   # PaymentService/IPaymentService, AdminDashboardService/IAdminDashboardService,
+│                                   # OrderExpirationScheduler, OrderNotificationService
 └── REVIEW/                         # Phân hệ AI Chatbot, Bảo hành điện tử, Sửa chữa, Đánh giá & Hỗ trợ
     ├── config/                     # RestClientConfig (Netty timeout 5s/15s)
     ├── controller/                 # ChatController, WarrantyController, RepairBookingController, ReviewController, SupportController
@@ -114,9 +114,8 @@ com.example.MyProject
 | **Chi nhánh** | `/api/branches` | `GET /` (active), `GET /admin/all`, `POST /create`, `PUT /{id}/update`, `DELETE /{id}/delete` |
 | **Sản phẩm & Danh mục** | `/api/products`, `/api/categories`, `/api/brands` | `GET /api/products/catalog`, `GET /api/products/slug/{slug}`, `GET /api/products/{id}/detailproduct`, CRUD Admin |
 | **Tồn kho Đa cơ sở** | `/api/inventory` | `GET /{id_product}/user`, `GET /{id_product}/branches`, `POST /create`, `PUT /{id}/soluong`, `PUT /{id}/adjust`, `POST /transfer` |
-| **Giỏ hàng & Voucher** | `/api/cart`, `/api/vouchers` | `GET /my-cart`, `POST /add`, `PUT /{productId}/update`, `DELETE /{id}`, `GET /available`, `GET /preview` |
+| **Giỏ hàng** | `/api/cart` | `GET /my-cart`, `POST /add`, `PUT /{productId}/update`, `DELETE /{id}` |
 | **Đơn hàng & BI Admin** | `/api/orders`, `/api/admin/dashboard` | `POST /create`, `GET /my-orders`, `PUT /{id}/cancel`, `PUT /{id}/update-status`, `GET /api/admin/dashboard/summary` |
-| **Tài liệu OpenAPI** | `/swagger-ui.html`, `/v3/api-docs` | Giao diện thử nghiệm API trực quan (Swagger UI 5) & đặc tả OpenAPI 3.0.3 tự động |
 | **Thanh toán** | `/api/payment` | `GET /create-sepay/{order_id}`, `POST /sepay-webhook`, `GET /create-vnpay/{order_id}`, `POST /verify`, `GET /order/{order_id}/latest` |
 | **AI Chatbot** | `/api/chat` | `POST /api/chat` (`{ "message": "..." }`) |
 | **Bảo hành & Sửa chữa** | `/api/warranty`, `/api/repairs` | `GET /lookup`, `GET /my-cards`, `POST /claims`, `POST /api/repairs`, `PATCH /admin/{id}/status` |

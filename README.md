@@ -3,8 +3,8 @@
 Hệ thống Backend thương mại điện tử & dịch vụ hậu mãi đa cơ sở cho cửa hàng Laptop, PC và Phụ kiện công nghệ **HK COMPUTER** (xây dựng bằng **Java 21 + Spring Boot 4.1 + PostgreSQL + Redis + WebSocket**).
 
 - **Website triển khai thực tế:** `https://vankhuongdev.id.vn`
-- **Swagger / OpenAPI Explorer:** `/swagger-ui.html` (JSON spec: `/v3/api-docs`)
 - **Tài liệu kỹ thuật chi tiết (`doc/`):** Xem đầy đủ tại **[doc/README.md](./doc/README.md)**
+- **Hệ thống chi nhánh trọng điểm (3 cơ sở):** Hà Nội (Thái Hà) · TP.HCM (Quận 10) · Đà Nẵng (Hải Châu)
 - **Tài khoản mẫu khởi tạo sẵn (Local / Test):**
   - Admin: `admin@hkcomputer.vn` / `Admin@123`
   - Khách hàng: `khachhang@hkcomputer.vn` / `User@123` (hoặc `khach@hkcomputer.vn` / `Khach@123`)
