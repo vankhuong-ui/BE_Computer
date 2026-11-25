@@ -11,7 +11,7 @@ import java.time.LocalDateTime;
 import java.util.List;
 
 /**
- * Periodically cancels stale UNPAID orders to release reserved branch inventory and voucher usage.
+ * Periodically cancels stale UNPAID orders to release reserved branch inventory.
  */
 @Slf4j
 @Component
@@ -21,11 +21,17 @@ public class OrderExpirationScheduler {
     private final OrdersRepository ordersRepository;
     private final OrdersService ordersService;
 
+    @Value("${orders.expiration.enabled:true}")
+    private boolean expirationEnabled = true;
+
     @Value("${orders.expiration.minutes:30}")
     private long expirationMinutes = 30;
 
     @Scheduled(fixedDelayString = "${orders.expiration.scan-ms:300000}", initialDelayString = "${orders.expiration.initial-delay-ms:60000}")
     public int cancelExpiredUnpaidOrders() {
+        if (!expirationEnabled) {
+            return 0;
+        }
         LocalDateTime cutoff = LocalDateTime.now().minusMinutes(Math.max(5, expirationMinutes));
         List<Long> expiredIds = ordersRepository.findExpiredUnpaidOrderIds(cutoff);
         if (expiredIds == null || expiredIds.isEmpty()) {

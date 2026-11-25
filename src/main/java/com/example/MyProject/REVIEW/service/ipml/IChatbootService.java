@@ -95,6 +95,23 @@ public class IChatbootService implements ChatbotService {
 
     @Override
     @Transactional(readOnly = true)
+    public String chatFromClient(String message, String sessionId, String clientIp) {
+        if (message == null || message.isBlank()) {
+            return null;
+        }
+        String clientKey = (sessionId != null && !sessionId.isBlank())
+                ? sessionId.trim().replaceAll("[^a-zA-Z0-9_-]", "")
+                : ((clientIp != null && !clientIp.isBlank()) ? clientIp.trim() : "anonymous");
+
+        if (rateLimiterService != null
+                && !rateLimiterService.allowRequest("chat:" + clientKey, 15, java.time.Duration.ofMinutes(1))) {
+            return "Bạn đang gửi tin nhắn hơi nhanh. Vui lòng đợi vài giây rồi hỏi tiếp để trợ lý HK COMPUTER phản hồi chính xác nhất nhé!";
+        }
+        return chat(message, clientKey);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
     public String chat(String message, String sessionKey) {
         Optional<String> inputBlocked = chatbotGuardrail.checkInput(message);
         if (inputBlocked.isPresent()) {

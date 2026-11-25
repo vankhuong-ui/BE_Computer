@@ -54,6 +54,7 @@ sequenceDiagram
 2. **Idempotency (Chống cộng/duyệt trùng):** Mỗi giao dịch SePay được gắn mã duy nhất `SEPAY_{id}` và kiểm tra qua `paymentRepository.existsByTransactionId(txId)` trước khi xử lý.
 3. **Không gây vòng lặp Retry cho giao dịch ngoài luồng:** Giao dịch tiền ra (`out`) hoặc chuyển khoản cá nhân không chứa tiền tố `DH{mã_đơn}` được ghi nhận log nhẹ và trả `HTTP 200 OK` thay vì ném lỗi `400`, giúp SePay không gửi lại nhiều lần.
 4. **Bảo vệ đơn đã hủy (`CANCELLED`):** Nếu khách chuyển khoản muộn vào một đơn đã bị hủy (đã hoàn kho), hệ thống không tự động bật lại `COMPLETED` mà ghi nhận bản ghi `Payment` với mã `ORDER_CANCELLED` để Admin đối soát hoàn tiền.
+5. **Gửi Email biên nhận & Mã Serial bảo hành bất đồng bộ (`OrderNotificationService`):** Ngay khi đơn hàng chuyển sang `COMPLETED` (qua SePay Webhook, VNPay hoặc Admin duyệt), hệ thống kích hoạt `@Async sendOrderPaidEmailAsync(...)` qua Brevo SMTP API để gửi biên nhận thanh toán kèm danh sách mã Serial bảo hành điện tử (`BH-{orderId}-{productId}`) mà không làm chậm luồng phản hồi HTTP/Webhook.
 
 ---
 

@@ -106,11 +106,7 @@ public class SecurityConfig {
                         // Public APIs
                         // --------------------------------
                         .requestMatchers(
-                                "/v3/api-docs",
-                                "/swagger-ui.html",
-                                "/api/v1/auth/**",
                                 "/api/branches",
-                                "/api/vouchers/available",
                                 "/api/inventory/{id_product}/user",
                                 "/api/inventory/{id_product}/branches",
                                 "/api/brands",

@@ -7,9 +7,9 @@ Tài liệu này mô tả luồng đồng bộ giỏ hàng hai tầng (PostgreSQ
 ## 1. Các thành phần tham gia trong Code
 
 - **Giỏ hàng:** `CartController.java`, `ICartService.java`, `IRedisCartService.java`, `CartRepository.java`
-- **Khuyến mãi (Voucher):** `VoucherController.java`, `VoucherRepository.java`, `Voucher.java`
-- **Tồn kho & Chi nhánh:** `BranchController.java`, `InventoryController.java`, `IInventoryService.java`, `InventoryWebSocketService.java`
-- **Đơn hàng:** `OrderController.java`, `IOrdersService.java`, `OrdersRepository.java`
+- **Khuyến mãi (Voucher):** `VoucherController.java`, `VoucherService.java`, `IVoucherService.java`, `VoucherRepository.java`
+- **Tồn kho & Chi nhánh:** `BranchController.java`, `BranchService.java`, `IBranchService.java`, `InventoryController.java`, `IInventoryService.java`, `InventoryWebSocketService.java`
+- **Đơn hàng & Cron:** `OrderController.java`, `IOrdersService.java`, `OrderExpirationScheduler.java`, `OrderNotificationService.java`, `OrdersRepository.java`
 - **Frontend:** `cart.html`, `checkout.html`, `order.html`, `admin-inventory.html`, `admin-vouchers.html`, `admin-orders.html`
 
 ---
@@ -45,16 +45,18 @@ flowchart TD
 
     G --> H{"Có nhập mã Voucher?"}
     H -- "Có" --> I["Kiểm tra: active, hạn dùng, usageLimit, minOrderAmount,<br/>firstOrderOnly (đơn đầu), mỗi tài khoản dùng tối đa 1 lần"]
-    I -- "Hợp lệ" --> J["Tính discountAmount (FIXED hoặc PERCENT có trần maxDiscount)<br/>Tăng voucher.usedCount + 1"]
+    I -- "Hợp lệ" --> J["Tính discountAmount & tăng lượt dùng nguyên tử SQL<br/>(voucherRepository.incrementUsageIfAvailable chống vượt trần)"]
     H -- "Không" --> K["discountAmount = 0"]
-    J --> L["Lưu Orders (status = UNPAID, totalAmount = total - discount)"]
+    J --> L["Lưu Orders (status = UNPAID) & tự động xóa SP đã đặt khỏi Giỏ hàng (DB + Redis)"]
     K --> L
     L --> M["Chuyển sang bước Thanh toán (SePay VietQR / VNPay / Thanh toán sau)"]
 ```
 
 ---
 
-## 4. Vòng đời Trạng thái Đơn hàng & Cơ chế Hoàn kho Tự động
+## 4. Vòng đời Trạng thái Đơn hàng, Hủy Đơn Treo Tự Động (>30 phút) & Hoàn kho
+
+- **Cron tự động dọn đơn treo (`OrderExpirationScheduler.java`):** Chạy định kỳ mỗi `5 phút`, tự động tìm các đơn `UNPAID` quá `30 phút` kể từ lúc tạo và gọi `ordersService.updateStatus(id, "CANCELLED")` để giải phóng tồn kho chi nhánh và lượt Voucher bị chiếm giữ.
 
 ```mermaid
 stateDiagram-v2

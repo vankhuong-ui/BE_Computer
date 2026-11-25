@@ -20,28 +20,6 @@ public interface OrdersRepository extends JpaRepository<Orders, Long> {
     List<Orders> findByUseraddressesAccountId(Long accountId);
 
     @Query("""
-        SELECT COUNT(o)
-        FROM Orders o
-        JOIN o.useraddresses ua
-        WHERE ua.account.id = :accountId
-          AND o.status <> 'CANCELLED'
-    """)
-    long countNonCancelledOrdersByAccountId(@Param("accountId") Long accountId);
-
-    @Query("""
-        SELECT COUNT(o)
-        FROM Orders o
-        JOIN o.useraddresses ua
-        WHERE ua.account.id = :accountId
-          AND o.voucher.id = :voucherId
-          AND o.status <> 'CANCELLED'
-    """)
-    long countNonCancelledOrdersByAccountIdAndVoucherId(
-            @Param("accountId") Long accountId,
-            @Param("voucherId") Long voucherId
-    );
-
-    @Query("""
         SELECT DISTINCT o
         FROM Orders o
         JOIN FETCH o.useraddresses ua

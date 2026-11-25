@@ -42,16 +42,6 @@ public class Orders {
     @Column(name = "receiver_phone", length = 50)
     private String receiverPhone;
 
-    @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "voucher_id")
-    private Voucher voucher;
-
-    @Column(name = "voucher_code", length = 50)
-    private String voucherCode;
-
-    @Column(name = "discount_amount", nullable = false, precision = 19, scale = 2)
-    private BigDecimal discountAmount = BigDecimal.ZERO;
-
     private BigDecimal totalAmount;
 
     private String status;

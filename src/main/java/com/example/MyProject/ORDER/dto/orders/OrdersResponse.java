@@ -16,8 +16,6 @@ public record OrdersResponse(
         String receiverName,
         String receiverPhone,
         String shippingAddress,
-        String voucherCode,
-        BigDecimal discountAmount,
         BigDecimal totalAmount,
         String status,
         LocalDateTime createdAt,

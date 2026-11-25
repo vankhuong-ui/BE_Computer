@@ -52,12 +52,13 @@ Chào mừng đến với bộ tài liệu kỹ thuật của **HK COMPUTER** �
 | **Tài khoản & Bảo mật** | Đăng nhập Google OAuth2 & Đặt/Đổi mật khẩu | Hoàn thành | Redirect động theo `app.frontend-url` |
 | **Sản phẩm & Kho** | Quản lý Thương hiệu, Danh mục (`LAPTOP`/`PC`/`ACCESSORY`), Sản phẩm | Hoàn thành | Hỗ trợ lọc đa tiêu chí, khoảng giá, từ khóa |
 | **Sản phẩm & Kho** | Quản lý Chi nhánh (`branches`) & Tồn kho Đa cơ sở + Chuyển kho | Hoàn thành | Ràng buộc `UNIQUE(product_id, branch_id)` + WebSocket tồn kho |
-| **Đơn hàng & Khuyến mãi** | Giỏ hàng (PostgreSQL + Redis), Voucher (`FIXED`/`PERCENT`, đơn đầu) | Hoàn thành | Tự động hoàn kho & hoàn lượt dùng Voucher khi hủy đơn |
-| **Đơn hàng & Khuyến mãi** | Đặt hàng Giao tận nơi (`HOME_DELIVERY`) & Nhận tại quầy (`STORE_PICKUP`) | Hoàn thành | Tự động phân bổ kho ưu tiên chi nhánh/thành phố khách chọn |
-| **Thanh toán** | VietQR SePay + Webhook tự động + WebSocket real-time | Hoàn thành | Có Idempotency key `SEPAY_{id}` và kiểm tra API Key |
-| **Thanh toán** | Cổng thanh toán VNPay Sandbox (HMAC-SHA512) | Hoàn thành | Đối chiếu chữ ký số và tổng tiền đơn hàng |
-| **AI & Hậu mãi** | AI Chatbot Hybrid (Groq `qwen/qwen3.8-27b` + Fallback DB + 3 lớp Guardrail) | Hoàn thành | 11/11 unit test pass, hỗ trợ nút link mua nhanh trên UI |
+| **Đơn hàng & Khuyến mãi** | Giỏ hàng (PostgreSQL + Redis), Voucher (`FIXED`/`PERCENT`, đơn đầu) | Hoàn thành | Khóa nguyên tử SQL Voucher, tự dọn giỏ hàng khi đặt đơn & hủy đơn treo >30 phút |
+| **Đơn hàng & Khuyến mãi** | Đặt hàng Giao tận nơi (`HOME_DELIVERY`) & Nhận tại quầy (`STORE_PICKUP`) | Hoàn thành | Tự động phân bổ kho ưu tiên chi nhánh/thành phố + Email biên nhận bất đồng bộ |
+| **Thanh toán** | VietQR SePay + Webhook tự động + WebSocket real-time | Hoàn thành | Idempotency `SEPAY_{id}`, kiểm tra API Key & gửi Email kích hoạt Serial bảo hành |
+| **Thanh toán** | Cổng thanh toán VNPay Sandbox (HMAC-SHA512) | Hoàn thành | Đối chiếu chữ ký số, tổng tiền đơn hàng & gửi Email biên nhận |
+| **AI & Hậu mãi** | AI Chatbot Hybrid (Groq `qwen/qwen3.8-27b` + Fallback DB + 3 lớp Guardrail) | Hoàn thành | Có Rate Limit + bộ nhớ hội thoại ngắn hạn trên Redis (`chat:hist:{session}`) |
 | **AI & Hậu mãi** | Bảo hành điện tử, Đặt lịch sửa chữa (`AT_STORE`/`AT_HOME`), Đánh giá, Hỗ trợ | Hoàn thành | Đầy đủ giao diện Khách hàng & bảng điều khiển Admin |
+| **Quản trị BI & UI/UX** | Cổng Admin **Creative Tim Paper Dashboard** + So sánh 2–3 SP + Mobile Bottom Nav | Hoàn thành | API `GET /api/admin/dashboard/summary`, Swagger `/swagger-ui.html`, chuẩn `360px`+ |
 | **Triển khai Cloud** | CI/CD Render (Backend Docker) + Vercel (`vankhuongdev.id.vn`) + Neon + Upstash | Hoàn thành | Tối ưu cache Docker layer & Google Maven Central mirror |
 
 ---
@@ -65,11 +66,9 @@ Chào mừng đến với bộ tài liệu kỹ thuật của **HK COMPUTER** �
 ## 5. Phương hướng phát triển tiếp theo (Roadmap)
 
 ### Ngắn hạn (1 – 2 tháng)
-1. **Thông báo đa kênh tự động:** Gửi email xác nhận đơn hàng, hóa đơn điện tử kèm mã Serial bảo hành (`BH-...`) và thông báo cập nhật tiến độ sửa chữa/bảo hành qua Brevo.
-2. **Quản lý Seri phần cứng thực tế (IMEI / Service Tag):** Gắn danh sách mã Serial nhà sản xuất cụ thể cho từng chiếc Laptop/Linh kiện khi xuất kho thay vì chỉ sinh mã định danh theo đơn.
-3. **Upload ảnh đám mây (Cloudinary / S3):** Cho phép khách hàng đính kèm hình ảnh lỗi thiết bị khi tạo phiếu yêu cầu bảo hành hoặc đặt lịch sửa chữa, và Admin tải ảnh sản phẩm trực tiếp thay vì dán URL.
+1. **Quản lý Seri phần cứng thực tế (IMEI / Service Tag):** Gắn danh sách mã Serial nhà sản xuất cụ thể cho từng chiếc Laptop/Linh kiện khi xuất kho song song với mã bảo hành điện tử.
+2. **Upload ảnh đám mây (Cloudinary / S3):** Cho phép khách hàng đính kèm hình ảnh lỗi thiết bị khi tạo phiếu yêu cầu bảo hành hoặc đặt lịch sửa chữa, và Admin tải ảnh sản phẩm trực tiếp.
 
 ### Trung & Dài hạn (3 – 6 tháng)
-1. **Báo cáo & Thống kê BI cho Admin:** Biểu đồ doanh thu theo ngày/tháng/chi nhánh, tỷ lệ chuyển đổi Voucher, top sản phẩm bán chạy và cảnh báo tồn kho chạm ngưỡng tối thiểu.
-2. **Tích hợp đơn vị vận chuyển (GHN / GHTK):** Tự động tính phí vận chuyển theo khoảng cách từ chi nhánh xuất kho tới địa chỉ khách hàng và đồng bộ mã vận đơn theo thời gian thực.
-3. **Nâng cấp AI Chatbot có trí nhớ hội thoại & gợi ý cấu hình Build PC:** Lưu ngữ cảnh nhiều lượt hỏi trong Redis theo phiên chat và tự động kiểm tra tính tương thích linh kiện (CPU – Mainboard – RAM – Nguồn) khi khách tự chọn cấu hình PC.
+1. **Tích hợp đơn vị vận chuyển (GHN / GHTK):** Tự động tính phí vận chuyển theo khoảng cách từ chi nhánh xuất kho tới địa chỉ khách hàng và đồng bộ mã vận đơn theo thời gian thực.
+2. **Gợi ý cấu hình Build PC thông minh:** Tự động kiểm tra tính tương thích linh kiện (CPU – Mainboard – RAM – Nguồn – Vỏ Case) khi khách hàng tự chọn cấu hình máy bàn.

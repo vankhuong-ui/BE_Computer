@@ -8,7 +8,7 @@ Tài liệu này mô tả kiến trúc **Hybrid Chatbot** của HK COMPUTER: k�
 
 - **Controller & Config:** `REVIEW/controller/ChatController.java`, `REVIEW/config/RestClientConfig.java` (connect timeout `5s`, response timeout `15s`)
 - **Rào chắn nội dung:** `REVIEW/service/ChatbotGuardrail.java`
-- **Trái tim xử lý Hybrid:** `REVIEW/service/ipml/IChatbootService.java`
+- **Trái tim xử lý Hybrid:** `ChatbotService.java`, `REVIEW/service/ipml/IChatbootService.java`, `AUTH/service/RedisRateLimiterService.java` (giới hạn tần suất 15 câu/phút/phiên & lưu tối đa 6 lượt ngữ cảnh hội thoại gần nhất trong Redis với TTL 15 phút)
 - **Kiểm thử tự động:** `src/test/java/com/example/MyProject/REVIEW/service/ChatbotHybridTest.java` (11 kịch bản kiểm thử)
 - **Frontend Widget:** `FE_Computer/assets/js/chat-widget.js` (nút nổi góc phải, lọc chống XSS & hiển thị nút bấm điều hướng sản phẩm/thanh toán)
 

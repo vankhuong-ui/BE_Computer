@@ -519,7 +519,6 @@ public class MyProjectApplication {
         order.setPickupBranch("STORE_PICKUP".equals(fulfillmentType) ? branch : null);
         order.setReceiverName(addr.getUsername());
         order.setReceiverPhone(addr.getPhone());
-        order.setDiscountAmount(BigDecimal.ZERO);
         order.setStatus(status);
         order.setCreatedAt(createdAt);
         if ("COMPLETED".equals(status)) {

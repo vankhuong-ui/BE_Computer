@@ -48,32 +48,36 @@ flowchart LR
 
 ---
 
-## 2. Kiến trúc phần mềm Backend (Modular Monolith)
+## 2. Kiến trúc phần mềm Backend (Modular Monolith — Chuẩn Tách Lớp 3 Tầng)
 
-Mã nguồn trong `src/main/java/com/example/MyProject` được tổ chức theo mô hình **Modular Monolith** chia làm 4 phân hệ nghiệp vụ độc lập, mỗi phân hệ tuân thủ kiến trúc phân lớp `Controller → Service (Interface + Impl) → Repository → Entity` kèm `DTO` và `MapStruct Mapper`:
+Mã nguồn trong `src/main/java/com/example/MyProject` được tổ chức theo mô hình **Modular Monolith** chia làm 4 phân hệ nghiệp vụ độc lập. **Mọi Controller trong hệ thống đều là Thin HTTP Adapter** (chỉ nhận request, kiểm tra `@PreAuthorize`, gắn cookie/response và ủy quyền hoàn toàn nghiệp vụ xuống tầng `Service`), tuyệt đối không gọi trực tiếp `Repository` hay đặt `@Transactional` ở tầng Controller:
 
 ```text
 com.example.MyProject
-├── MyProjectApplication.java       # Điểm khởi chạy & khởi tạo dữ liệu mẫu an toàn (idempotent)
-├── AUTH/                           # Phân hệ Tài khoản, Xác thực & Sổ địa chỉ
+├── MyProjectApplication.java       # Điểm khởi chạy (@EnableScheduling, @EnableAsync) & seed dữ liệu mẫu idempotent
+├── AUTH/                           # Phân hệ Tài khoản, Xác thực, Sổ địa chỉ & OpenAPI Explorer
 │   ├── common/                     # ApiResponse, BaseController, PhoneValidator (chuẩn SĐT 10 số VN)
 │   ├── config/                     # RedisConfig
-│   ├── controller/                 # AccountController, UseradressController, TestAuthController
+│   ├── controller/                 # AccountController, UseradressController, OpenApiDocController, TestAuthController
 │   ├── security/                   # SecurityConfig, JwtService, JwtAuthenticationFilter, OAuth2, EmailVerificationService
-│   ├── service/ & repository/      # Account, RefreshToken, Useraddresses, RedisOtpService
+│   ├── service/ & impl/            # AccountService/IAccountService, UseraddressService/IUseraddressService,
+│   │                               # OpenApiDocService/IOpenApiDocService, RedisRateLimiterService, IRedisOtpService
 │   └── exception/                  # GlobalExceptionHandler, CustomAuthenticationEntryPoint, CustomAccessDeniedHandler
 ├── PRODUCT/                        # Phân hệ Danh mục, Thương hiệu, Sản phẩm & Kho Đa Cơ Sở
 │   ├── config/                     # WebSocketConfig (/ws, broker /topic)
 │   ├── controller/                 # ProductController, CategoriesController, BrandsController, BranchController, InventoryController
-│   └── service/ & repository/      # Products, Categories, Brands, Branch, Inventory, InventoryWebSocketService
-├── ORDER/                          # Phân hệ Giỏ hàng, Voucher, Đơn hàng & Thanh toán
+│   └── service/ & impl/            # ProductService/IProductService (hỗ trợ cả ID & slug), BranchService/IBranchService,
+│                                   # InventoryService/IInventoryService, InventoryWebSocketService
+├── ORDER/                          # Phân hệ Giỏ hàng, Voucher, Đơn hàng, Thanh toán & Admin BI Dashboard
 │   ├── config/                     # SePayConfig, VNPayConfig
-│   ├── controller/                 # CartController, VoucherController, OrderController, PaymentController
-│   └── service/ & repository/      # Cart, RedisCartService, Voucher, Orders, OrderItem, Payment
+│   ├── controller/                 # CartController, VoucherController, OrderController, PaymentController, AdminDashboardController
+│   └── service/ & impl/            # CartService/ICartService, RedisCartService, VoucherService/IVoucherService,
+│                                   # OrdersService/IOrdersService, PaymentService/IPaymentService,
+│                                   # AdminDashboardService/IAdminDashboardService, OrderExpirationScheduler, OrderNotificationService
 └── REVIEW/                         # Phân hệ AI Chatbot, Bảo hành điện tử, Sửa chữa, Đánh giá & Hỗ trợ
     ├── config/                     # RestClientConfig (Netty timeout 5s/15s)
     ├── controller/                 # ChatController, WarrantyController, RepairBookingController, ReviewController, SupportController
-    └── service/ & repository/      # IChatbootService, ChatbotGuardrail, IWarrantyService, IRepairBookingService, IReviewService, ISupportService
+    └── service/ & ipml/            # ChatbotService/IChatbootService, ChatbotGuardrail, IWarrantyService, IRepairBookingService, IReviewService, ISupportService
 ```
 
 ---
@@ -108,10 +112,11 @@ com.example.MyProject
 | **Tài khoản & Auth** | `/api/account` | `POST /register`, `POST /send-code`, `POST /check-code`, `POST /login`, `POST /refresh-token`, `POST /logout`, `PUT /forgot-password` |
 | **Sổ địa chỉ** | `/api/useraddresses` | `GET /user`, `POST /create`, `PUT /{id}/update`, `DELETE /{id}/delete` |
 | **Chi nhánh** | `/api/branches` | `GET /` (active), `GET /admin/all`, `POST /create`, `PUT /{id}/update`, `DELETE /{id}/delete` |
-| **Sản phẩm & Danh mục** | `/api/products`, `/api/categories`, `/api/brands` | `GET /api/products/catalog` (lọc đa tiêu chí), `GET /api/products/{id}/detailproduct`, CRUD Admin |
+| **Sản phẩm & Danh mục** | `/api/products`, `/api/categories`, `/api/brands` | `GET /api/products/catalog`, `GET /api/products/slug/{slug}`, `GET /api/products/{id}/detailproduct`, CRUD Admin |
 | **Tồn kho Đa cơ sở** | `/api/inventory` | `GET /{id_product}/user`, `GET /{id_product}/branches`, `POST /create`, `PUT /{id}/soluong`, `PUT /{id}/adjust`, `POST /transfer` |
 | **Giỏ hàng & Voucher** | `/api/cart`, `/api/vouchers` | `GET /my-cart`, `POST /add`, `PUT /{productId}/update`, `DELETE /{id}`, `GET /available`, `GET /preview` |
-| **Đơn hàng** | `/api/orders` | `POST /create`, `GET /my-orders`, `PUT /{id}/cancel`, `GET /` (Admin), `PUT /{id}/update-status` |
+| **Đơn hàng & BI Admin** | `/api/orders`, `/api/admin/dashboard` | `POST /create`, `GET /my-orders`, `PUT /{id}/cancel`, `PUT /{id}/update-status`, `GET /api/admin/dashboard/summary` |
+| **Tài liệu OpenAPI** | `/swagger-ui.html`, `/v3/api-docs` | Giao diện thử nghiệm API trực quan (Swagger UI 5) & đặc tả OpenAPI 3.0.3 tự động |
 | **Thanh toán** | `/api/payment` | `GET /create-sepay/{order_id}`, `POST /sepay-webhook`, `GET /create-vnpay/{order_id}`, `POST /verify`, `GET /order/{order_id}/latest` |
 | **AI Chatbot** | `/api/chat` | `POST /api/chat` (`{ "message": "..." }`) |
 | **Bảo hành & Sửa chữa** | `/api/warranty`, `/api/repairs` | `GET /lookup`, `GET /my-cards`, `POST /claims`, `POST /api/repairs`, `PATCH /admin/{id}/status` |

@@ -8,11 +8,9 @@ import com.example.MyProject.ORDER.dto.orders.OrdersRequest;
 import com.example.MyProject.ORDER.dto.orders.OrdersResponse;
 import com.example.MyProject.ORDER.entity.OrderItem;
 import com.example.MyProject.ORDER.entity.Orders;
-import com.example.MyProject.ORDER.entity.Voucher;
 import com.example.MyProject.ORDER.mapper.OrdersMapper;
 import com.example.MyProject.ORDER.repository.CartRepository;
 import com.example.MyProject.ORDER.repository.OrdersRepository;
-import com.example.MyProject.ORDER.repository.VoucherRepository;
 import com.example.MyProject.ORDER.service.OrderNotificationService;
 import com.example.MyProject.ORDER.service.OrdersService;
 import com.example.MyProject.ORDER.service.RedisCartService;
@@ -44,7 +42,6 @@ public class IOrdersService implements OrdersService {
 
     private final OrdersMapper ordersMapper;
     private final OrdersRepository ordersRepository;
-    private final VoucherRepository voucherRepository;
     private final CartRepository cartRepository;
     private final RedisCartService redisCartService;
     private final OrderNotificationService orderNotificationService;
@@ -176,57 +173,7 @@ public class IOrdersService implements OrdersService {
             orderItems.add(orderItem);
         }
 
-        BigDecimal discountAmount = BigDecimal.ZERO;
-        if (request.voucherCode() != null && !request.voucherCode().isBlank()) {
-            Voucher voucher = voucherRepository.findByCodeIgnoreCase(request.voucherCode().trim())
-                    .orElseThrow(() -> new RuntimeException("Mã giảm giá \"" + request.voucherCode() + "\" không tồn tại"));
-            LocalDateTime now = LocalDateTime.now();
-            if (!voucher.isActive()) {
-                throw new RuntimeException("Mã giảm giá hiện đã tạm ngưng");
-            }
-            if (voucher.getUsedCount() >= voucher.getUsageLimit()) {
-                throw new RuntimeException("Mã giảm giá đã hết lượt sử dụng");
-            }
-            if (voucher.getStartDate() != null && now.isBefore(voucher.getStartDate())) {
-                throw new RuntimeException("Mã giảm giá chưa đến thời gian áp dụng");
-            }
-            if (voucher.getEndDate() != null && now.isAfter(voucher.getEndDate())) {
-                throw new RuntimeException("Mã giảm giá đã hết hạn sử dụng");
-            }
-            if (total.compareTo(voucher.getMinOrderAmount()) < 0) {
-                throw new RuntimeException("Đơn hàng chưa đạt giá trị tối thiểu để áp dụng mã " + voucher.getCode());
-            }
-            if (voucher.isFirstOrderOnly() && ordersRepository.countNonCancelledOrdersByAccountId(accountId) > 0) {
-                throw new RuntimeException("Mã " + voucher.getCode() + " chỉ áp dụng cho đơn hàng đầu tiên của tài khoản mới");
-            }
-            if (ordersRepository.countNonCancelledOrdersByAccountIdAndVoucherId(accountId, voucher.getId()) > 0) {
-                throw new RuntimeException("Tài khoản của bạn đã sử dụng mã " + voucher.getCode() + " trước đó");
-            }
-
-            if ("PERCENT".equalsIgnoreCase(voucher.getDiscountType())) {
-                discountAmount = total.multiply(voucher.getDiscountValue())
-                        .divide(BigDecimal.valueOf(100), 0, java.math.RoundingMode.HALF_UP);
-                if (voucher.getMaxDiscount() != null && discountAmount.compareTo(voucher.getMaxDiscount()) > 0) {
-                    discountAmount = voucher.getMaxDiscount();
-                }
-            } else {
-                discountAmount = voucher.getDiscountValue();
-            }
-            discountAmount = discountAmount.min(total);
-
-            int updatedVoucher = voucherRepository.incrementUsageIfAvailable(voucher.getId());
-            if (updatedVoucher == 0) {
-                throw new RuntimeException("Mã giảm giá vừa hết lượt sử dụng");
-            }
-
-            order.setVoucher(voucher);
-            order.setVoucherCode(voucher.getCode());
-            order.setDiscountAmount(discountAmount);
-        } else {
-            order.setDiscountAmount(BigDecimal.ZERO);
-        }
-
-        order.setTotalAmount(total.subtract(discountAmount).max(BigDecimal.ZERO));
+        order.setTotalAmount(total.max(BigDecimal.ZERO));
         order.setOrderItems(orderItems);
         ordersRepository.save(order);
 
@@ -441,10 +388,6 @@ public class IOrdersService implements OrdersService {
                 }
             }
             broadcastProductTotalStock(item.getProducts().getId());
-        }
-
-        if (orders.getVoucher() != null && orders.getVoucher().getId() != null) {
-            voucherRepository.decrementUsageIfPositive(orders.getVoucher().getId());
         }
     }
 

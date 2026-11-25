@@ -8,7 +8,7 @@ Tài liệu này mô tả chi tiết luồng đăng ký, xác thực OTP qua ema
 
 - **Controller:** `AUTH/controller/AccountController.java`, `AUTH/controller/UseradressController.java`
 - **Security & Filter:** `AUTH/security/SecurityConfig.java`, `JwtAuthenticationFilter.java`, `JwtService.java`, `OAuth2SuccessHandler.java`, `CustomOAuth2UserService.java`
-- **Service:** `IAccountService.java`, `EmailVerificationService.java`, `IRedisOtpService.java`, `RefreshTokenService.java`, `IUseraddressService.java`
+- **Service:** `AccountService.java` / `IAccountService.java` (xử lý toàn bộ nghiệp vụ đăng nhập, phát hành/làm mới/thu hồi RefreshToken, kiểm tra Rate Limit OTP 60s), `EmailVerificationService.java`, `IRedisOtpService.java`, `RedisRateLimiterService.java`, `RefreshTokenService.java`, `IUseraddressService.java`
 - **Frontend:** `dang-ky.html`, `xac-thuc-otp.html`, `dang-nhap.html`, `assets/js/auth.js`, `assets/js/api.js`
 
 ---

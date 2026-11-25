@@ -12,7 +12,6 @@ public record OrdersRequest(
      String preferredCity,
      String receiverName,
      String receiverPhone,
-     String voucherCode,
      List<OrderItemRequest> orderItems
 ) {
 }
