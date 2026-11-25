@@ -281,6 +281,38 @@ class ChatbotHybridTest {
         mockServer.verify();
     }
 
+    @Test
+    void cityInventoryQueryReportsExactStockAtRequestedCityAndOtherBranches() {
+        Products dell5500 = createProduct(9L, "Laptop Dell Latitude 5500", "Dell", "Laptop",
+                new BigDecimal("8490000"), "Core i5 | 16GB | 512GB SSD", "Laptop văn phòng");
+
+        com.example.MyProject.PRODUCT.entity.Branch hn = new com.example.MyProject.PRODUCT.entity.Branch();
+        hn.setId(1L);
+        hn.setName("HK COMPUTER - Thái Hà");
+        hn.setCity("Hà Nội");
+        hn.setActive(true);
+
+        com.example.MyProject.PRODUCT.entity.Branch dn = new com.example.MyProject.PRODUCT.entity.Branch();
+        dn.setId(3L);
+        dn.setName("HK COMPUTER - Hải Châu");
+        dn.setCity("Đà Nẵng");
+        dn.setActive(true);
+
+        Inventory invHn = createInventory(dell5500, 7);
+        invHn.setBranch(hn);
+        Inventory invDn = createInventory(dell5500, 0);
+        invDn.setBranch(dn);
+
+        when(productRepository.findAllWithBrandAndCategory()).thenReturn(List.of(dell5500));
+        when(inventoryRepository.findByProducts_IdIn(anyList())).thenReturn(List.of(invHn, invDn));
+
+        String replyHn = chatbotService.chat("Dell Latitude 5500 ở Hà Nội còn hàng không?");
+        assertThat(replyHn).contains("Còn 7 sản phẩm tại Hà Nội");
+
+        String replyDn = chatbotService.chat("Dell Latitude 5500 tại Đà Nẵng còn không?");
+        assertThat(replyDn).contains("Tạm hết tại Đà Nẵng").contains("Hà Nội (7)");
+    }
+
     private Products createProduct(
             Long id, String name, String brandName, String catName,
             BigDecimal price, String specs, String description) {

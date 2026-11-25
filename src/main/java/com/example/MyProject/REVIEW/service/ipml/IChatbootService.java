@@ -123,7 +123,8 @@ public class IChatbootService implements ChatbotService {
 
         PriceExtraction priceExtraction = extractPriceRange(normalized);
         PriceRange priceRange = priceExtraction.range();
-        String queryWithoutPrice = ChatbotGuardrail.toAlnumSpace(priceExtraction.remainingText());
+        String requestedCity = detectRequestedCity(alnum);
+        String queryWithoutPriceAndCity = stripCityPhrases(ChatbotGuardrail.toAlnumSpace(priceExtraction.remainingText()));
 
         boolean isGreeting = containsAnyPhrase(alnum,
                 "xin chao", "chao ban", "chao shop", "hello", "hi", "alo", "hey", "chao ad");
@@ -156,7 +157,7 @@ public class IChatbootService implements ChatbotService {
                 "con hang", "ton kho", "co hang", "con bao nhieu", "so luong",
                 "het hang", "con khong", "con san pham", "san hang");
 
-        List<String> searchTokens = extractSearchTokens(queryWithoutPrice);
+        List<String> searchTokens = extractSearchTokens(queryWithoutPriceAndCity);
         boolean isPriceExtremum = isMostExpensive || isCheapest;
         boolean hasProductQuery = isProductList || isInventory || isPriceExtremum
                 || priceRange != null || !searchTokens.isEmpty();
@@ -175,7 +176,7 @@ public class IChatbootService implements ChatbotService {
         }
 
         String databaseContext = buildDatabaseContext(
-                matchedProducts, catalogProducts, priceRange,
+                matchedProducts, catalogProducts, priceRange, requestedCity,
                 isCapability, isMostExpensive, isCheapest, isBuyOrCheckout,
                 isWarranty, isRepair, isPayment, isGreeting, isThanks, hasProductQuery);
 
@@ -187,7 +188,7 @@ public class IChatbootService implements ChatbotService {
         }
 
         String localFallbackReply = buildLocalReply(
-                matchedProducts, searchTokens, priceRange,
+                matchedProducts, searchTokens, priceRange, requestedCity,
                 isCapability, isMostExpensive, isCheapest, isBuyOrCheckout,
                 isWarranty, isRepair, isPayment, isGreeting, isThanks,
                 isProductList, isInventory, hasProductQuery);
@@ -422,6 +423,7 @@ public class IChatbootService implements ChatbotService {
                 .toList();
 
         Map<Long, Integer> stockMap = new HashMap<>();
+        Map<Long, Map<String, Integer>> cityStockMap = new HashMap<>();
         if (!ids.isEmpty()) {
             List<Inventory> inventories = inventoryRepository.findByProducts_IdIn(ids);
             if (inventories != null) {
@@ -430,14 +432,24 @@ public class IChatbootService implements ChatbotService {
                         if (inv.getBranch() != null && !inv.getBranch().isActive()) {
                             continue;
                         }
-                        stockMap.merge(inv.getProducts().getId(), Math.max(0, inv.getSoluong()), Integer::sum);
+                        int qty = Math.max(0, inv.getSoluong());
+                        Long pid = inv.getProducts().getId();
+                        stockMap.merge(pid, qty, Integer::sum);
+                        if (inv.getBranch() != null && inv.getBranch().getCity() != null && !inv.getBranch().getCity().isBlank()) {
+                            cityStockMap.computeIfAbsent(pid, k -> new LinkedHashMap<>())
+                                    .merge(inv.getBranch().getCity().trim(), qty, Integer::sum);
+                        }
                     }
                 }
             }
         }
 
         return selected.stream()
-                .map(p -> new ProductWithStock(p, stockMap.getOrDefault(p.getId(), 0)))
+                .map(p -> new ProductWithStock(
+                        p,
+                        stockMap.getOrDefault(p.getId(), 0),
+                        cityStockMap.getOrDefault(p.getId(), Collections.emptyMap())
+                ))
                 .toList();
     }
 
@@ -493,6 +505,7 @@ public class IChatbootService implements ChatbotService {
             List<ProductWithStock> products,
             List<ProductWithStock> catalogProducts,
             PriceRange priceRange,
+            String requestedCity,
             boolean isCapability,
             boolean isMostExpensive,
             boolean isCheapest,
@@ -505,6 +518,10 @@ public class IChatbootService implements ChatbotService {
             boolean hasProductQuery) {
 
         StringBuilder ctx = new StringBuilder();
+
+        if (requestedCity != null) {
+            ctx.append("KHÁCH ĐANG HỎI TỒN KHO / DỊCH VỤ TẠI KHU VỰC: ").append(requestedCity).append("\n");
+        }
 
         if (isCapability) {
             ctx.append("""
@@ -585,7 +602,13 @@ public class IChatbootService implements ChatbotService {
             Products p = item.product();
             ctx.append("- Tên: ").append(nullSafe(p.getNameProduct()))
                     .append(" | Giá: ").append(formatPrice(p.getPrice()))
-                    .append(" | Tồn kho: ").append(item.stock()).append(" sản phẩm");
+                    .append(" | Tổng tồn kho: ").append(item.stock()).append(" sản phẩm");
+            if (!item.stockByCity().isEmpty()) {
+                String branchSummary = item.stockByCity().entrySet().stream()
+                        .map(e -> e.getKey() + ": " + e.getValue())
+                        .collect(java.util.stream.Collectors.joining(", "));
+                ctx.append(" (Chi nhánh: ").append(branchSummary).append(")");
+            }
             if (p.getBrands() != null && p.getBrands().getNameBrands() != null) {
                 ctx.append(" | Hãng: ").append(p.getBrands().getNameBrands());
             }
@@ -610,6 +633,7 @@ public class IChatbootService implements ChatbotService {
             List<ProductWithStock> products,
             List<String> searchTokens,
             PriceRange priceRange,
+            String requestedCity,
             boolean isCapability,
             boolean isMostExpensive,
             boolean isCheapest,
@@ -661,33 +685,35 @@ public class IChatbootService implements ChatbotService {
                     }
                     if (products.size() > 1) {
                         reply.append("\nCác sản phẩm tiếp theo:\n");
-                        appendProductBullets(reply, products.subList(1, products.size()), true);
+                        appendProductBullets(reply, products.subList(1, products.size()), true, requestedCity);
                     }
                 } else if (isCheapest) {
                     ProductWithStock top = products.get(0);
                     reply.append("Sản phẩm có giá thấp nhất hiện có tại HK COMPUTER là **")
                             .append(nullSafe(top.product().getNameProduct()))
                             .append("** — Giá: ").append(formatPrice(top.product().getPrice()))
-                            .append(" — ").append(stockLabel(top.stock()));
+                            .append(" — ").append(stockLabelForCity(top, requestedCity));
                     if (top.product().getId() != null) {
                         reply.append(" [Xem & mua ").append(nullSafe(top.product().getNameProduct()))
                                 .append("](detailproductuser.html?id=").append(top.product().getId()).append(")");
                     }
                     if (products.size() > 1) {
                         reply.append("\nCác sản phẩm tiếp theo:\n");
-                        appendProductBullets(reply, products.subList(1, products.size()), true);
+                        appendProductBullets(reply, products.subList(1, products.size()), true, requestedCity);
                     }
                 } else {
                     if (!isBuyOrCheckout) {
                         if (isProductList) {
                             reply.append("Dưới đây là các sản phẩm hiện có tại HK COMPUTER:\n");
-                        } else if (isInventory) {
-                            reply.append("Thông tin tồn kho tại HK COMPUTER:\n");
+                        } else if (isInventory || requestedCity != null) {
+                            reply.append(requestedCity != null
+                                    ? "Thông tin tồn kho tại chi nhánh **" + requestedCity + "** — HK COMPUTER:\n"
+                                    : "Thông tin tồn kho tại HK COMPUTER:\n");
                         } else {
                             reply.append("HK COMPUTER tìm thấy các sản phẩm phù hợp cho bạn:\n");
                         }
                     }
-                    appendProductBullets(reply, products, !isProductList);
+                    appendProductBullets(reply, products, !isProductList, requestedCity);
                 }
             }
         }
@@ -731,12 +757,12 @@ public class IChatbootService implements ChatbotService {
         return sb.toString();
     }
 
-    private void appendProductBullets(StringBuilder reply, List<ProductWithStock> products, boolean includeSpecs) {
+    private void appendProductBullets(StringBuilder reply, List<ProductWithStock> products, boolean includeSpecs, String requestedCity) {
         for (ProductWithStock item : products) {
             Products p = item.product();
             reply.append("• ").append(nullSafe(p.getNameProduct()))
                     .append(" — Giá: ").append(formatPrice(p.getPrice()))
-                    .append(" — ").append(stockLabel(item.stock()));
+                    .append(" — ").append(stockLabelForCity(item, requestedCity));
             if (includeSpecs && p.getSpecs() != null && !p.getSpecs().isBlank()) {
                 reply.append(" | ").append(truncate(p.getSpecs().trim(), 90));
             }
@@ -746,6 +772,50 @@ public class IChatbootService implements ChatbotService {
             }
             reply.append("\n");
         }
+    }
+
+    private String stockLabelForCity(ProductWithStock item, String requestedCity) {
+        if (requestedCity != null && !item.stockByCity().isEmpty()) {
+            int localQty = item.stockByCity().getOrDefault(requestedCity, 0);
+            if (localQty > 0) {
+                return "Còn " + localQty + " sản phẩm tại " + requestedCity + " (tổng hệ thống: " + item.stock() + ")";
+            }
+            if (item.stock() > 0) {
+                String otherBranches = item.stockByCity().entrySet().stream()
+                        .filter(e -> e.getValue() > 0)
+                        .map(e -> e.getKey() + " (" + e.getValue() + ")")
+                        .collect(java.util.stream.Collectors.joining(", "));
+                return "Tạm hết tại " + requestedCity + " — Còn hàng tại " + otherBranches + " (hỗ trợ giao toàn quốc)";
+            }
+            return "Tạm hết hàng toàn hệ thống";
+        }
+        return stockLabel(item.stock());
+    }
+
+    private String detectRequestedCity(String alnum) {
+        if (alnum == null || alnum.isBlank()) {
+            return null;
+        }
+        if (containsAnyPhrase(alnum, "ha noi", "thai ha", "dong da", "hn")) {
+            return "Hà Nội";
+        }
+        if (containsAnyPhrase(alnum, "tp hcm", "tphcm", "ho chi minh", "sai gon", "quan 10", "hcm")) {
+            return "TP.HCM";
+        }
+        if (containsAnyPhrase(alnum, "da nang", "hai chau", "thanh khe", "dn")) {
+            return "Đà Nẵng";
+        }
+        return null;
+    }
+
+    private String stripCityPhrases(String alnum) {
+        if (alnum == null || alnum.isBlank()) {
+            return "";
+        }
+        return (" " + alnum + " ")
+                .replaceAll("\\s+(ha noi|thai ha|dong da|tp hcm|tphcm|ho chi minh|sai gon|quan 10|da nang|hai chau|thanh khe|chi nhanh|co so|khu vuc|o|tai)\\s+", " ")
+                .replaceAll("\\s+", " ")
+                .trim();
     }
 
     private String stockLabel(int stock) {
@@ -911,6 +981,6 @@ public class IChatbootService implements ChatbotService {
     private record ScoredProduct(Products product, int primaryMatchedTokens, int matchedTokens, int score) {
     }
 
-    private record ProductWithStock(Products product, int stock) {
+    private record ProductWithStock(Products product, int stock, Map<String, Integer> stockByCity) {
     }
 }
