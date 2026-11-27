@@ -1,10 +1,9 @@
-package com.example.MyProject.REVIEW.service.ipml;
+package com.example.MyProject.REVIEW.service.impl;
 
-import com.example.MyProject.AUTH.common.PhoneValidator;
 import com.example.MyProject.AUTH.entity.Account;
 import com.example.MyProject.ORDER.entity.OrderItem;
 import com.example.MyProject.ORDER.entity.Orders;
-import com.example.MyProject.ORDER.repository.OrdersRepository;
+import com.example.MyProject.ORDER.service.OrdersService;
 import com.example.MyProject.PRODUCT.entity.Products;
 import com.example.MyProject.REVIEW.dto.warranty.WarrantyCardResponse;
 import com.example.MyProject.REVIEW.dto.warranty.WarrantyClaimRequest;
@@ -12,6 +11,8 @@ import com.example.MyProject.REVIEW.dto.warranty.WarrantyClaimResponse;
 import com.example.MyProject.REVIEW.entity.WarrantyClaim;
 import com.example.MyProject.REVIEW.repository.WarrantyClaimRepository;
 import com.example.MyProject.REVIEW.service.WarrantyService;
+import com.example.MyProject.common.PhoneValidator;
+import com.example.MyProject.common.exception.BusinessException;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -33,10 +34,10 @@ import java.util.regex.Pattern;
 
 @Service
 @RequiredArgsConstructor
-public class IWarrantyService implements WarrantyService {
+public class WarrantyServiceImpl implements WarrantyService {
 
     private final WarrantyClaimRepository warrantyClaimRepository;
-    private final OrdersRepository ordersRepository;
+    private final OrdersService ordersService;
 
     private static final int DEFAULT_WARRANTY_MONTHS = 24;
 
@@ -44,7 +45,7 @@ public class IWarrantyService implements WarrantyService {
     @Override
     public List<WarrantyCardResponse> getMyWarrantyCards() {
         Account account = (Account) SecurityContextHolder.getContext().getAuthentication().getPrincipal();
-        List<Orders> orders = ordersRepository.findOrdersWithDetailsByAccountId(account.getId());
+        List<Orders> orders = ordersService.findOrdersWithDetailsByAccount(account.getId());
 
         List<WarrantyCardResponse> cards = new ArrayList<>();
         for (Orders order : orders) {
@@ -60,7 +61,7 @@ public class IWarrantyService implements WarrantyService {
     @Override
     public List<WarrantyCardResponse> lookupWarranty(String keyword) {
         if (keyword == null || keyword.isBlank()) {
-            throw new RuntimeException("Vui lòng nhập mã bảo hành (Serial) hoặc mã đơn hàng");
+            throw new BusinessException("Vui lòng nhập mã bảo hành (Serial) hoặc mã đơn hàng");
         }
         String clean = keyword.trim().toUpperCase(Locale.ROOT);
 
@@ -94,10 +95,7 @@ public class IWarrantyService implements WarrantyService {
             return List.of();
         }
 
-        Orders order = (isAdmin
-                ? ordersRepository.findByIdWithDetails(orderId)
-                : ordersRepository.findByIdAndAccountIdWithDetails(orderId, account.getId()))
-                .orElse(null);
+        Orders order = ordersService.findOrderForWarrantyLookup(orderId, account.getId(), isAdmin).orElse(null);
         if (order == null) return List.of();
         if (!"COMPLETED".equalsIgnoreCase(order.getStatus()) && !"PAID".equalsIgnoreCase(order.getStatus())) {
             return List.of();
@@ -117,28 +115,27 @@ public class IWarrantyService implements WarrantyService {
         Account account = (Account) SecurityContextHolder.getContext().getAuthentication().getPrincipal();
 
         if (request.orderId() == null || request.productId() == null) {
-            throw new RuntimeException("Vui lòng chọn đơn hàng và sản phẩm cần bảo hành");
+            throw new BusinessException("Vui lòng chọn đơn hàng và sản phẩm cần bảo hành");
         }
         if (request.description() == null || request.description().isBlank()) {
-            throw new RuntimeException("Vui lòng mô tả chi tiết tình trạng lỗi của thiết bị");
+            throw new BusinessException("Vui lòng mô tả chi tiết tình trạng lỗi của thiết bị");
         }
         int unitNumber = request.unitNumber() != null ? request.unitNumber() : 1;
         if (unitNumber < 1) {
-            throw new RuntimeException("Số thứ tự thiết bị phải lớn hơn 0");
+            throw new BusinessException("Số thứ tự thiết bị phải lớn hơn 0");
         }
         String normalizedPhone = PhoneValidator.validateAndNormalize(request.contactPhone());
 
-        Orders order = ordersRepository.findForWarrantyClaimByIdAndAccountId(request.orderId(), account.getId())
-                .orElseThrow(() -> new RuntimeException("Đơn hàng không tồn tại hoặc không thuộc tài khoản của bạn"));
+        Orders order = ordersService.requireOrderForWarrantyClaim(request.orderId(), account.getId());
 
         if (!"COMPLETED".equalsIgnoreCase(order.getStatus()) && !"PAID".equalsIgnoreCase(order.getStatus())) {
-            throw new RuntimeException("Chỉ những đơn hàng đã hoàn tất thanh toán mới được kích hoạt bảo hành");
+            throw new BusinessException("Chỉ những đơn hàng đã hoàn tất thanh toán mới được kích hoạt bảo hành");
         }
 
         OrderItem matchedItem = order.getOrderItems().stream()
                 .filter(item -> item.getProducts() != null && item.getProducts().getId().equals(request.productId()))
                 .findFirst()
-                .orElseThrow(() -> new RuntimeException("Sản phẩm không tồn tại trong đơn hàng này"));
+                .orElseThrow(() -> new BusinessException("Sản phẩm không tồn tại trong đơn hàng này"));
 
         Products product = matchedItem.getProducts();
         int productQuantity = order.getOrderItems().stream()
@@ -146,24 +143,23 @@ public class IWarrantyService implements WarrantyService {
                 .mapToInt(item -> item.getQuantity() != null ? item.getQuantity() : 0)
                 .sum();
         if (unitNumber > productQuantity) {
-            throw new RuntimeException("Số thứ tự thiết bị không tồn tại trong đơn hàng");
+            throw new BusinessException("Số thứ tự thiết bị không tồn tại trong đơn hàng");
         }
         LocalDateTime purchaseDate = getWarrantyStartDate(order);
         int warrantyMonths = resolveWarrantyMonths(product);
         LocalDateTime expireDate = purchaseDate.plusMonths(warrantyMonths);
 
         if (!expireDate.isAfter(LocalDateTime.now())) {
-            throw new RuntimeException("Sản phẩm này đã hết thời hạn bảo hành vào ngày " + expireDate.toLocalDate());
+            throw new BusinessException("Sản phẩm này đã hết thời hạn bảo hành vào ngày " + expireDate.toLocalDate());
         }
 
-        // Kiểm tra xem có yêu cầu bảo hành nào đang xử lý không
         warrantyClaimRepository.findFirstByOrderIdAndProductIdAndUnitNumberAndStatusIn(
                 order.getId(),
                 product.getId(),
                 unitNumber,
                 List.of("PENDING", "RECEIVED", "REPAIRING")
         ).ifPresent(existing -> {
-            throw new RuntimeException("Thiết bị này đang có một yêu cầu bảo hành đang được xử lý (Mã #" + existing.getId() + ")");
+            throw new BusinessException("Thiết bị này đang có một yêu cầu bảo hành đang được xử lý (Mã #" + existing.getId() + ")");
         });
 
         String serialCode = buildSerialCode(order.getId(), product.getId(), unitNumber);
@@ -182,23 +178,20 @@ public class IWarrantyService implements WarrantyService {
                 .warrantyExpireDate(expireDate)
                 .build();
 
-        WarrantyClaim saved = warrantyClaimRepository.save(claim);
-        return toResponse(saved);
+        return toResponse(warrantyClaimRepository.save(claim));
     }
 
     @Transactional(readOnly = true)
     @Override
     public Page<WarrantyClaimResponse> getMyClaims(Pageable pageable) {
         Account account = (Account) SecurityContextHolder.getContext().getAuthentication().getPrincipal();
-        return warrantyClaimRepository.findByAccountId(account.getId(), pageable)
-                .map(this::toResponse);
+        return warrantyClaimRepository.findByAccountId(account.getId(), pageable).map(this::toResponse);
     }
 
     @Transactional(readOnly = true)
     @Override
     public Page<WarrantyClaimResponse> getAllClaims(Pageable pageable) {
-        return warrantyClaimRepository.findAll(pageable)
-                .map(this::toResponse);
+        return warrantyClaimRepository.findAll(pageable).map(this::toResponse);
     }
 
     @Transactional
@@ -207,11 +200,11 @@ public class IWarrantyService implements WarrantyService {
         String upperStatus = status != null ? status.trim().toUpperCase(Locale.ROOT) : "";
 
         WarrantyClaim claim = warrantyClaimRepository.findById(id)
-                .orElseThrow(() -> new RuntimeException("Không tìm thấy phiếu yêu cầu bảo hành #" + id));
+                .orElseThrow(() -> new BusinessException("Không tìm thấy phiếu yêu cầu bảo hành #" + id));
 
         String currentStatus = claim.getStatus() != null ? claim.getStatus().trim().toUpperCase(Locale.ROOT) : "";
         if (!currentStatus.equals(upperStatus) && !allowedClaimTransitions(currentStatus).contains(upperStatus)) {
-            throw new RuntimeException("Không thể chuyển trạng thái bảo hành từ "
+            throw new BusinessException("Không thể chuyển trạng thái bảo hành từ "
                     + currentStatus + " sang " + upperStatus);
         }
         claim.setStatus(upperStatus);
@@ -219,8 +212,16 @@ public class IWarrantyService implements WarrantyService {
             claim.setAdminNote(adminNote.trim());
         }
 
-        WarrantyClaim saved = warrantyClaimRepository.save(claim);
-        return toResponse(saved);
+        return toResponse(warrantyClaimRepository.save(claim));
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public long countPendingClaims() {
+        return warrantyClaimRepository.findAll().stream()
+                .filter(w -> w.getStatus() == null
+                        || (!"COMPLETED".equalsIgnoreCase(w.getStatus()) && !"REJECTED".equalsIgnoreCase(w.getStatus())))
+                .count();
     }
 
     private List<WarrantyCardResponse> buildCardsFromOrder(Orders order) {
@@ -267,7 +268,7 @@ public class IWarrantyService implements WarrantyService {
 
     private LocalDateTime getWarrantyStartDate(Orders order) {
         if (order.getPaidAt() == null) {
-            throw new RuntimeException("Đơn hàng chưa có thời điểm thanh toán được ghi nhận");
+            throw new BusinessException("Đơn hàng chưa có thời điểm thanh toán được ghi nhận");
         }
         return order.getPaidAt();
     }

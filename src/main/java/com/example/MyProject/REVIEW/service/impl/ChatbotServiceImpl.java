@@ -1,13 +1,15 @@
-package com.example.MyProject.REVIEW.service.ipml;
+package com.example.MyProject.REVIEW.service.impl;
 
 import com.example.MyProject.AUTH.service.RedisRateLimiterService;
-import com.example.MyProject.PRODUCT.entity.Inventory;
 import com.example.MyProject.PRODUCT.entity.Products;
-import com.example.MyProject.PRODUCT.repository.InventoryRepository;
-import com.example.MyProject.PRODUCT.repository.ProductRepository;
+import com.example.MyProject.PRODUCT.service.InventoryService;
+import com.example.MyProject.PRODUCT.service.ProductService;
+import com.example.MyProject.REVIEW.service.ChatbotCatalogMatcher;
+import com.example.MyProject.REVIEW.service.ChatbotCatalogMatcher.PriceExtraction;
+import com.example.MyProject.REVIEW.service.ChatbotCatalogMatcher.PriceRange;
+import com.example.MyProject.REVIEW.service.ChatbotCatalogMatcher.ProductWithStock;
 import com.example.MyProject.REVIEW.service.ChatbotGuardrail;
 import com.example.MyProject.REVIEW.service.ChatbotService;
-import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
@@ -19,56 +21,15 @@ import org.springframework.web.client.RestClient;
 import java.math.BigDecimal;
 import java.text.NumberFormat;
 import java.util.*;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
+import java.util.stream.Collectors;
+
+import static com.example.MyProject.REVIEW.service.ChatbotCatalogMatcher.containsAnyPhrase;
 
 @Slf4j
 @Service
-@RequiredArgsConstructor
-public class IChatbootService implements ChatbotService {
+public class ChatbotServiceImpl implements ChatbotService {
 
-    private static final int MAX_SEARCH_RESULTS = 8;
-    private static final int MAX_LIST_RESULTS = 15;
-    private static final int MAX_COMPACT_CATALOG_SIZE = 20;
-
-    private static final Pattern RANGE_PRICE_PATTERN = Pattern.compile(
-            "(?:\\btu\\s+)?(\\d+(?:[.,]\\d+)?)\\s*(?:(trieu|tr|cu|nghin|ngan|k)\\b)?\\s*(?:den|toi|-|~)\\s*(\\d+(?:[.,]\\d+)?)\\s*(trieu|tr|cu|nghin|ngan|k)\\b"
-    );
-    private static final Pattern MAX_PRICE_PATTERN = Pattern.compile(
-            "(?:\\b(?:duoi|toi da|khong qua|it hon|re hon)\\b|<=|<)\\s*(\\d+(?:[.,]\\d+)?)\\s*(trieu|tr|cu|nghin|ngan|k)\\b"
-    );
-    private static final Pattern MIN_PRICE_PATTERN = Pattern.compile(
-            "(?:\\b(?:tren|tu|hon)\\b|>=|>)\\s*(\\d+(?:[.,]\\d+)?)\\s*(trieu|tr|cu|nghin|ngan|k)\\b(?:\\s*tro len)?"
-    );
-    private static final Pattern APPROX_PRICE_PATTERN = Pattern.compile(
-            "\\b(?:tam gia|muc gia|tam|khoang)\\b\\s*(\\d+(?:[.,]\\d+)?)\\s*(trieu|tr|cu|nghin|ngan|k)\\b"
-    );
-
-    private static final Set<String> GENERIC_PRODUCT_WORDS = Set.of("may", "san", "pham", "thiet", "bi");
-
-    private static final Set<String> STOP_WORDS = Set.copyOf(Arrays.asList(
-            "toi", "minh", "em", "anh", "chi", "ban", "shop", "cua", "hang", "hk", "computer",
-            "oi", "ad", "admin", "cho", "hoi", "xin", "vui", "long", "tu", "van", "tim", "kiem",
-            "muon", "mua", "can", "xem", "co", "khong", "ko", "hong", "nhung", "nao", "gi", "the",
-            "sao", "vay", "nhi", "nhe", "nha", "ah", "ak", "uh", "la", "va", "voi", "hay", "hoac",
-            "de", "duoc", "dc", "nay", "kia", "do", "day", "con", "het", "ton", "kho", "bao",
-            "nhieu", "gia", "tien", "vnd", "dong", "trieu", "tr", "cu", "nghin", "ngan", "duoi",
-            "tren", "den", "tam", "khoang", "muc", "san", "pham", "sp", "loai", "mau", "chiec",
-            "cai", "bo", "thuong", "hieu", "re", "nhat", "tot", "chat", "luong", "chinh", "hien",
-            "tai", "trong", "he", "thong", "ve", "tin", "tiet", "so", "tinh", "trang", "hanh",
-            "sua", "chua", "thanh", "toan", "chao", "hello", "hi", "alo", "cam", "on", "thank",
-            "thanks", "you", "da", "biet", "gioi", "thieu", "danh", "sach", "tat", "ca", "cac",
-            "mot", "vai", "giup", "sach", "che", "quy", "trinh", "thuc", "phuong", "dich", "vu",
-            "dat", "lich", "tra", "cuu", "yeu", "cau", "huong", "dan", "thoi", "gian", "dia",
-            "qua", "sepay", "vietqr", "vnpay", "cod", "serial", "dien", "chuyen", "khoan",
-            "quet", "ma", "qr", "mat", "tan", "noi", "nha", "ky", "thuat", "vien", "win", "sinh",
-            "loi", "phan", "cung", "doi", "ben", "web", "website", "don", "lam", "mo", "vo",
-            "vao", "di", "trang", "gio", "ngay", "ho", "tro", "chuc", "nang", "cao", "thap",
-            "it", "nho", "khac", "nua", "xong", "di"
-    ));
-
-    private final ProductRepository productRepository;
-    private final InventoryRepository inventoryRepository;
+    private final ChatbotCatalogMatcher catalogMatcher;
     private final RestClient restClient;
     private final ChatbotGuardrail chatbotGuardrail;
 
@@ -86,6 +47,24 @@ public class IChatbootService implements ChatbotService {
 
     @Value("${groq.fallback-models:openai/gpt-oss-120b,openai/gpt-oss-20b}")
     private String groqFallbackModels = "openai/gpt-oss-120b,openai/gpt-oss-20b";
+
+    @Autowired
+    public ChatbotServiceImpl(
+            ChatbotCatalogMatcher catalogMatcher,
+            RestClient restClient,
+            ChatbotGuardrail chatbotGuardrail) {
+        this.catalogMatcher = catalogMatcher;
+        this.restClient = restClient;
+        this.chatbotGuardrail = chatbotGuardrail;
+    }
+
+    public ChatbotServiceImpl(
+            ProductService productService,
+            InventoryService inventoryService,
+            RestClient restClient,
+            ChatbotGuardrail chatbotGuardrail) {
+        this(new ChatbotCatalogMatcher(productService, inventoryService), restClient, chatbotGuardrail);
+    }
 
     @Override
     @Transactional(readOnly = true)
@@ -121,10 +100,11 @@ public class IChatbootService implements ChatbotService {
         String normalized = ChatbotGuardrail.normalize(message);
         String alnum = ChatbotGuardrail.toAlnumSpace(normalized);
 
-        PriceExtraction priceExtraction = extractPriceRange(normalized);
+        PriceExtraction priceExtraction = catalogMatcher.extractPriceRange(normalized);
         PriceRange priceRange = priceExtraction.range();
-        String requestedCity = detectRequestedCity(alnum);
-        String queryWithoutPriceAndCity = stripCityPhrases(ChatbotGuardrail.toAlnumSpace(priceExtraction.remainingText()));
+        String requestedCity = catalogMatcher.detectRequestedCity(alnum);
+        String queryWithoutPriceAndCity = catalogMatcher.stripCityPhrases(
+                ChatbotGuardrail.toAlnumSpace(priceExtraction.remainingText()));
 
         boolean isGreeting = containsAnyPhrase(alnum,
                 "xin chao", "chao ban", "chao shop", "hello", "hi", "alo", "hey", "chao ad");
@@ -157,7 +137,7 @@ public class IChatbootService implements ChatbotService {
                 "con hang", "ton kho", "co hang", "con bao nhieu", "so luong",
                 "het hang", "con khong", "con san pham", "san hang");
 
-        List<String> searchTokens = extractSearchTokens(queryWithoutPriceAndCity);
+        List<String> searchTokens = catalogMatcher.extractSearchTokens(queryWithoutPriceAndCity);
         boolean isPriceExtremum = isMostExpensive || isCheapest;
         boolean hasProductQuery = isProductList || isInventory || isPriceExtremum
                 || priceRange != null || !searchTokens.isEmpty();
@@ -166,13 +146,13 @@ public class IChatbootService implements ChatbotService {
         List<ProductWithStock> catalogProducts = Collections.emptyList();
 
         if (hasProductQuery) {
-            matchedProducts = findMatchingProducts(
+            matchedProducts = catalogMatcher.findMatchingProducts(
                     searchTokens, priceRange, isProductList, isMostExpensive, isCheapest);
         }
 
         if (matchedProducts.isEmpty() && !isCapability && !isGreeting && !isThanks
                 && !isWarranty && !isRepair && !isPayment && hasValidGroqKey()) {
-            catalogProducts = loadCompactCatalogIfSmall();
+            catalogProducts = catalogMatcher.loadCompactCatalogIfSmall();
         }
 
         String databaseContext = buildDatabaseContext(
@@ -321,186 +301,6 @@ public class IChatbootService implements ChatbotService {
         return String.valueOf(contentObj).trim();
     }
 
-    private List<ProductWithStock> loadCompactCatalogIfSmall() {
-        List<Products> all = productRepository.findAllWithBrandAndCategory();
-        if (all == null || all.isEmpty() || all.size() > MAX_COMPACT_CATALOG_SIZE) {
-            return Collections.emptyList();
-        }
-        return attachStocks(all.stream().limit(MAX_LIST_RESULTS).toList());
-    }
-
-    private List<ProductWithStock> findMatchingProducts(
-            List<String> searchTokens,
-            PriceRange priceRange,
-            boolean isProductList,
-            boolean isMostExpensive,
-            boolean isCheapest) {
-
-        List<Products> allProducts = productRepository.findAllWithBrandAndCategory();
-        if (allProducts == null || allProducts.isEmpty()) {
-            return Collections.emptyList();
-        }
-
-        List<Products> priceFiltered = allProducts.stream()
-                .filter(p -> priceRange == null || priceRange.matches(p.getPrice()))
-                .toList();
-
-        if (priceFiltered.isEmpty()) {
-            return Collections.emptyList();
-        }
-
-        boolean isPriceExtremum = isMostExpensive || isCheapest;
-        boolean onlyGenericTokens = !searchTokens.isEmpty()
-                && searchTokens.stream().allMatch(GENERIC_PRODUCT_WORDS::contains);
-
-        List<Products> candidates;
-        if (searchTokens.isEmpty() || (isPriceExtremum && onlyGenericTokens)) {
-            candidates = priceFiltered;
-        } else {
-            List<ScoredProduct> scored = new ArrayList<>();
-            for (Products product : priceFiltered) {
-                ScoredProduct sp = scoreProduct(product, searchTokens);
-                if (sp.matchedTokens() > 0) {
-                    scored.add(sp);
-                }
-            }
-
-            if (scored.isEmpty()) {
-                return Collections.emptyList();
-            }
-
-            List<ScoredProduct> primaryMatches = scored.stream()
-                    .filter(sp -> sp.primaryMatchedTokens() > 0)
-                    .toList();
-            List<ScoredProduct> pool = !primaryMatches.isEmpty() ? primaryMatches : scored;
-
-            List<ScoredProduct> fullMatches = pool.stream()
-                    .filter(sp -> sp.matchedTokens() == searchTokens.size())
-                    .toList();
-
-            List<ScoredProduct> chosen = !fullMatches.isEmpty() ? fullMatches : pool;
-
-            if (!isPriceExtremum) {
-                chosen = chosen.stream()
-                        .sorted(Comparator
-                                .comparingInt(ScoredProduct::primaryMatchedTokens).reversed()
-                                .thenComparing(Comparator.comparingInt(ScoredProduct::matchedTokens).reversed())
-                                .thenComparing(Comparator.comparingInt(ScoredProduct::score).reversed()))
-                        .limit(MAX_SEARCH_RESULTS)
-                        .toList();
-            }
-
-            candidates = chosen.stream().map(ScoredProduct::product).toList();
-        }
-
-        List<Products> selected;
-        if (isMostExpensive) {
-            selected = candidates.stream()
-                    .sorted(Comparator.comparing(
-                            Products::getPrice,
-                            Comparator.nullsLast(Comparator.reverseOrder())))
-                    .limit(MAX_SEARCH_RESULTS)
-                    .toList();
-        } else if (isCheapest) {
-            selected = candidates.stream()
-                    .sorted(Comparator.comparing(
-                            Products::getPrice,
-                            Comparator.nullsLast(Comparator.naturalOrder())))
-                    .limit(MAX_SEARCH_RESULTS)
-                    .toList();
-        } else {
-            int limit = isProductList ? MAX_LIST_RESULTS : MAX_SEARCH_RESULTS;
-            selected = candidates.stream().limit(limit).toList();
-        }
-
-        return attachStocks(selected);
-    }
-
-    private List<ProductWithStock> attachStocks(List<Products> selected) {
-        List<Long> ids = selected.stream()
-                .map(Products::getId)
-                .filter(Objects::nonNull)
-                .toList();
-
-        Map<Long, Integer> stockMap = new HashMap<>();
-        Map<Long, Map<String, Integer>> cityStockMap = new HashMap<>();
-        if (!ids.isEmpty()) {
-            List<Inventory> inventories = inventoryRepository.findByProducts_IdIn(ids);
-            if (inventories != null) {
-                for (Inventory inv : inventories) {
-                    if (inv.getProducts() != null && inv.getProducts().getId() != null) {
-                        if (inv.getBranch() != null && !inv.getBranch().isActive()) {
-                            continue;
-                        }
-                        int qty = Math.max(0, inv.getSoluong());
-                        Long pid = inv.getProducts().getId();
-                        stockMap.merge(pid, qty, Integer::sum);
-                        if (inv.getBranch() != null && inv.getBranch().getCity() != null && !inv.getBranch().getCity().isBlank()) {
-                            cityStockMap.computeIfAbsent(pid, k -> new LinkedHashMap<>())
-                                    .merge(inv.getBranch().getCity().trim(), qty, Integer::sum);
-                        }
-                    }
-                }
-            }
-        }
-
-        return selected.stream()
-                .map(p -> new ProductWithStock(
-                        p,
-                        stockMap.getOrDefault(p.getId(), 0),
-                        cityStockMap.getOrDefault(p.getId(), Collections.emptyMap())
-                ))
-                .toList();
-    }
-
-    private ScoredProduct scoreProduct(Products product, List<String> tokens) {
-        String name = ChatbotGuardrail.toAlnumSpace(ChatbotGuardrail.normalize(product.getNameProduct()));
-        String brand = product.getBrands() != null
-                ? ChatbotGuardrail.toAlnumSpace(ChatbotGuardrail.normalize(product.getBrands().getNameBrands()))
-                : "";
-        String category = product.getCategories() != null
-                ? ChatbotGuardrail.toAlnumSpace(ChatbotGuardrail.normalize(product.getCategories().getNameCategories()))
-                : "";
-        String specs = ChatbotGuardrail.toAlnumSpace(ChatbotGuardrail.normalize(product.getSpecs()));
-        String desc = ChatbotGuardrail.toAlnumSpace(ChatbotGuardrail.normalize(product.getDescription()));
-
-        int matchedCount = 0;
-        int primaryMatchedCount = 0;
-        int totalScore = 0;
-
-        for (String token : tokens) {
-            int tokenScore = 0;
-            boolean inPrimary = false;
-            if (containsWordOrSub(name, token)) {
-                tokenScore += 4;
-                inPrimary = true;
-            }
-            if (containsWordOrSub(brand, token) || containsWordOrSub(category, token)) {
-                tokenScore += 2;
-                inPrimary = true;
-            }
-            if (containsWordOrSub(specs, token) || containsWordOrSub(desc, token)) {
-                tokenScore += 1;
-            }
-            if (tokenScore > 0) {
-                matchedCount++;
-                totalScore += tokenScore;
-                if (inPrimary) {
-                    primaryMatchedCount++;
-                }
-            }
-        }
-
-        return new ScoredProduct(product, primaryMatchedCount, matchedCount, totalScore);
-    }
-
-    private boolean containsWordOrSub(String fieldText, String token) {
-        if (fieldText.isBlank() || token.isBlank()) {
-            return false;
-        }
-        return fieldText.contains(token);
-    }
-
     private String buildDatabaseContext(
             List<ProductWithStock> products,
             List<ProductWithStock> catalogProducts,
@@ -530,7 +330,7 @@ public class IChatbootService implements ChatbotService {
                     - Kiểm tra tình trạng còn hàng và số lượng tồn kho thực tế.
                     - Liệt kê sản phẩm giá cao nhất / thấp nhất tại cửa hàng.
                     - Hướng dẫn tra cứu và gửi yêu cầu bảo hành điện tử: [Tra cứu bảo hành](warranty.html)
-                    - Hướng dẫn đặt lịch sửa chữa tại cửa hàng hoặc tận nơi: [Đặt lịch sửa chữa](support.html)
+                    - Hướng dẫn đặt lịch sửa chữa tại cửa hàng hoặc tận nơi: [Đặt lịch sửa chữa](index.html#repair-center)
                     - Hướng dẫn thanh toán VietQR SePay tự động, VNPay, COD và gửi link trang mua/thanh toán: [Đi tới trang thanh toán](checkout.html)
                     """);
         }
@@ -575,7 +375,7 @@ public class IChatbootService implements ChatbotService {
         if (isRepair) {
             ctx.append("\nDỊCH VỤ ĐẶT LỊCH SỬA CHỮA:\n")
                     .append("- HK COMPUTER hỗ trợ đặt lịch sửa chữa trực tuyến với 2 hình thức: Sửa tại cửa hàng (AT_STORE) hoặc Kỹ thuật viên hỗ trợ tận nơi (AT_HOME).\n")
-                    .append("- Đường dẫn đặt lịch: [Đặt lịch sửa chữa](support.html)\n");
+                    .append("- Đường dẫn đặt lịch: [Đặt lịch sửa chữa](index.html#repair-center)\n");
         }
 
         if (isPayment) {
@@ -606,7 +406,7 @@ public class IChatbootService implements ChatbotService {
             if (!item.stockByCity().isEmpty()) {
                 String branchSummary = item.stockByCity().entrySet().stream()
                         .map(e -> e.getKey() + ": " + e.getValue())
-                        .collect(java.util.stream.Collectors.joining(", "));
+                        .collect(Collectors.joining(", "));
                 ctx.append(" (Chi nhánh: ").append(branchSummary).append(")");
             }
             if (p.getBrands() != null && p.getBrands().getNameBrands() != null) {
@@ -655,7 +455,7 @@ public class IChatbootService implements ChatbotService {
                     • Tìm sản phẩm theo tên, hãng hoặc ngân sách (VD: "laptop Asus dưới 20 triệu")
                     • Kiểm tra tồn kho & gợi ý sản phẩm giá cao nhất / thấp nhất tại cửa hàng
                     • Tra cứu bảo hành sau khi đăng nhập (mã BH-MãĐơn-MãSP-SốThiếtBị) [Tra cứu bảo hành](warranty.html)
-                    • Hướng dẫn đặt lịch sửa chữa tại cửa hàng hoặc tận nơi [Đặt lịch sửa chữa](support.html)
+                    • Hướng dẫn đặt lịch sửa chữa tại cửa hàng hoặc tận nơi [Đặt lịch sửa chữa](index.html#repair-center)
                     • Hướng dẫn thanh toán VietQR SePay, VNPay hoặc COD [Đi tới trang thanh toán](checkout.html)
 
                     Bạn đang muốn tìm sản phẩm hay hỗ trợ dịch vụ nào ạ?""";
@@ -725,7 +525,7 @@ public class IChatbootService implements ChatbotService {
 
         if (isRepair) {
             appendParagraph(reply,
-                    "Về dịch vụ sửa chữa: Bạn có thể đặt lịch trực tiếp trên website với 2 hình thức: mang máy tới cửa hàng hoặc đặt kỹ thuật viên hỗ trợ tận nơi. [Đặt lịch sửa chữa](support.html)");
+                    "Về dịch vụ sửa chữa: Bạn có thể đặt lịch trực tiếp trên website với 2 hình thức: mang máy tới cửa hàng hoặc đặt kỹ thuật viên hỗ trợ tận nơi. [Đặt lịch sửa chữa](index.html#repair-center)");
         }
 
         if (isPayment || isBuyOrCheckout) {
@@ -784,38 +584,12 @@ public class IChatbootService implements ChatbotService {
                 String otherBranches = item.stockByCity().entrySet().stream()
                         .filter(e -> e.getValue() > 0)
                         .map(e -> e.getKey() + " (" + e.getValue() + ")")
-                        .collect(java.util.stream.Collectors.joining(", "));
+                        .collect(Collectors.joining(", "));
                 return "Tạm hết tại " + requestedCity + " — Còn hàng tại " + otherBranches + " (hỗ trợ giao toàn quốc)";
             }
             return "Tạm hết hàng toàn hệ thống";
         }
         return stockLabel(item.stock());
-    }
-
-    private String detectRequestedCity(String alnum) {
-        if (alnum == null || alnum.isBlank()) {
-            return null;
-        }
-        if (containsAnyPhrase(alnum, "ha noi", "thai ha", "dong da", "hn")) {
-            return "Hà Nội";
-        }
-        if (containsAnyPhrase(alnum, "tp hcm", "tphcm", "ho chi minh", "sai gon", "quan 10", "hcm")) {
-            return "TP.HCM";
-        }
-        if (containsAnyPhrase(alnum, "da nang", "hai chau", "thanh khe", "dn")) {
-            return "Đà Nẵng";
-        }
-        return null;
-    }
-
-    private String stripCityPhrases(String alnum) {
-        if (alnum == null || alnum.isBlank()) {
-            return "";
-        }
-        return (" " + alnum + " ")
-                .replaceAll("\\s+(ha noi|thai ha|dong da|tp hcm|tphcm|ho chi minh|sai gon|quan 10|da nang|hai chau|thanh khe|chi nhanh|co so|khu vuc|o|tai)\\s+", " ")
-                .replaceAll("\\s+", " ")
-                .trim();
     }
 
     private String stockLabel(int stock) {
@@ -827,107 +601,6 @@ public class IChatbootService implements ChatbotService {
             sb.append("\n\n");
         }
         sb.append(text);
-    }
-
-    private List<String> extractSearchTokens(String alnumText) {
-        if (alnumText == null || alnumText.isBlank()) {
-            return Collections.emptyList();
-        }
-        List<String> tokens = new ArrayList<>();
-        for (String token : alnumText.split("\\s+")) {
-            if (token.length() < 2) {
-                continue;
-            }
-            if (STOP_WORDS.contains(token)) {
-                continue;
-            }
-            if (token.matches("^\\d+$")) {
-                continue;
-            }
-            tokens.add(token);
-        }
-        return tokens.stream().distinct().toList();
-    }
-
-    private PriceExtraction extractPriceRange(String normalized) {
-        if (normalized == null || normalized.isBlank()) {
-            return new PriceExtraction(null, "");
-        }
-
-        Matcher rangeMatcher = RANGE_PRICE_PATTERN.matcher(normalized);
-        if (rangeMatcher.find()) {
-            String endUnit = rangeMatcher.group(4);
-            String startUnit = rangeMatcher.group(2) != null ? rangeMatcher.group(2) : endUnit;
-            BigDecimal min = parseAmount(rangeMatcher.group(1), startUnit);
-            BigDecimal max = parseAmount(rangeMatcher.group(3), endUnit);
-            if (min != null && max != null && min.compareTo(max) > 0) {
-                BigDecimal tmp = min;
-                min = max;
-                max = tmp;
-            }
-            String remaining = replaceMatch(normalized, rangeMatcher.start(), rangeMatcher.end());
-            return new PriceExtraction(new PriceRange(min, max), remaining);
-        }
-
-        Matcher maxMatcher = MAX_PRICE_PATTERN.matcher(normalized);
-        if (maxMatcher.find()) {
-            BigDecimal max = parseAmount(maxMatcher.group(1), maxMatcher.group(2));
-            String remaining = replaceMatch(normalized, maxMatcher.start(), maxMatcher.end());
-            return new PriceExtraction(new PriceRange(null, max), remaining);
-        }
-
-        Matcher minMatcher = MIN_PRICE_PATTERN.matcher(normalized);
-        if (minMatcher.find()) {
-            BigDecimal min = parseAmount(minMatcher.group(1), minMatcher.group(2));
-            String remaining = replaceMatch(normalized, minMatcher.start(), minMatcher.end());
-            return new PriceExtraction(new PriceRange(min, null), remaining);
-        }
-
-        Matcher approxMatcher = APPROX_PRICE_PATTERN.matcher(normalized);
-        if (approxMatcher.find()) {
-            BigDecimal center = parseAmount(approxMatcher.group(1), approxMatcher.group(2));
-            if (center != null) {
-                BigDecimal min = center.multiply(BigDecimal.valueOf(0.75));
-                BigDecimal max = center.multiply(BigDecimal.valueOf(1.25));
-                String remaining = replaceMatch(normalized, approxMatcher.start(), approxMatcher.end());
-                return new PriceExtraction(new PriceRange(min, max), remaining);
-            }
-        }
-
-        return new PriceExtraction(null, normalized);
-    }
-
-    private String replaceMatch(String text, int start, int end) {
-        return (text.substring(0, start) + " " + text.substring(end)).replaceAll("\\s+", " ").trim();
-    }
-
-    private BigDecimal parseAmount(String numberRaw, String unit) {
-        if (numberRaw == null || unit == null) {
-            return null;
-        }
-        try {
-            BigDecimal number = new BigDecimal(numberRaw.replace(',', '.'));
-            return switch (unit) {
-                case "tr", "trieu", "cu" -> number.multiply(BigDecimal.valueOf(1_000_000L));
-                case "k", "nghin", "ngan" -> number.multiply(BigDecimal.valueOf(1_000L));
-                default -> number;
-            };
-        } catch (NumberFormatException e) {
-            return null;
-        }
-    }
-
-    private boolean containsAnyPhrase(String alnumText, String... phrases) {
-        if (alnumText == null || alnumText.isBlank()) {
-            return false;
-        }
-        String padded = " " + alnumText + " ";
-        for (String phrase : phrases) {
-            if (padded.contains(" " + phrase + " ")) {
-                return true;
-            }
-        }
-        return false;
     }
 
     private String formatPrice(BigDecimal price) {
@@ -947,40 +620,5 @@ public class IChatbootService implements ChatbotService {
 
     private String nullSafe(String s) {
         return s == null ? "" : s;
-    }
-
-    private record PriceRange(BigDecimal min, BigDecimal max) {
-        boolean matches(BigDecimal price) {
-            if (price == null) {
-                return false;
-            }
-            if (min != null && price.compareTo(min) < 0) {
-                return false;
-            }
-            return max == null || price.compareTo(max) <= 0;
-        }
-
-        String describe() {
-            NumberFormat nf = NumberFormat.getIntegerInstance(Locale.of("vi", "VN"));
-            if (min != null && max != null) {
-                return "từ " + nf.format(min.longValue()) + "₫ đến " + nf.format(max.longValue()) + "₫";
-            }
-            if (max != null) {
-                return "dưới " + nf.format(max.longValue()) + "₫";
-            }
-            if (min != null) {
-                return "trên " + nf.format(min.longValue()) + "₫";
-            }
-            return "";
-        }
-    }
-
-    private record PriceExtraction(PriceRange range, String remainingText) {
-    }
-
-    private record ScoredProduct(Products product, int primaryMatchedTokens, int matchedTokens, int score) {
-    }
-
-    private record ProductWithStock(Products product, int stock, Map<String, Integer> stockByCity) {
     }
 }

@@ -28,4 +28,5 @@ public interface AccountService {
     void logoutSession(String refreshTokenStr);
     AuthSessionResult verifyCodeAndCreateSession(String gmail, String code);
     AccountResponse resetForgotPassword(String gmail, String code, String newPassword);
+    long countTotalAccounts();
 }

@@ -7,6 +7,7 @@ import com.example.MyProject.PRODUCT.entity.Inventory;
 import com.example.MyProject.PRODUCT.repository.BranchRepository;
 import com.example.MyProject.PRODUCT.repository.InventoryRepository;
 import com.example.MyProject.PRODUCT.service.BranchService;
+import com.example.MyProject.common.exception.BusinessException;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -17,7 +18,7 @@ import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
-public class IBranchService implements BranchService {
+public class BranchServiceImpl implements BranchService {
 
     private final BranchRepository branchRepository;
     private final InventoryRepository inventoryRepository;
@@ -41,16 +42,16 @@ public class IBranchService implements BranchService {
     @Transactional
     public BranchResponse createBranch(BranchRequest req) {
         if (req.name() == null || req.name().isBlank()) {
-            throw new RuntimeException("Tên cơ sở không được để trống");
+            throw new BusinessException("Tên cơ sở không được để trống");
         }
         if (req.city() == null || req.city().isBlank()) {
-            throw new RuntimeException("Tỉnh/Thành phố không được để trống");
+            throw new BusinessException("Tỉnh/Thành phố không được để trống");
         }
         String code = (req.code() != null && !req.code().isBlank())
                 ? req.code().trim().toUpperCase()
                 : "BR-" + System.currentTimeMillis();
         if (branchRepository.existsByCodeIgnoreCase(code)) {
-            throw new RuntimeException("Mã cơ sở " + code + " đã tồn tại");
+            throw new BusinessException("Mã cơ sở " + code + " đã tồn tại");
         }
 
         Branch b = new Branch();
@@ -72,13 +73,13 @@ public class IBranchService implements BranchService {
     @Transactional
     public BranchResponse updateBranch(Long id, BranchRequest req) {
         Branch b = branchRepository.findById(id)
-                .orElseThrow(() -> new RuntimeException("Không tìm thấy cơ sở #" + id));
+                .orElseThrow(() -> new BusinessException("Không tìm thấy cơ sở #" + id));
 
         if (req.code() != null && !req.code().isBlank()) {
             String newCode = req.code().trim().toUpperCase();
             branchRepository.findByCodeIgnoreCase(newCode).ifPresent(existing -> {
                 if (!existing.getId().equals(id)) {
-                    throw new RuntimeException("Mã cơ sở " + newCode + " đã được sử dụng");
+                    throw new BusinessException("Mã cơ sở " + newCode + " đã được sử dụng");
                 }
             });
             b.setCode(newCode);
@@ -100,14 +101,54 @@ public class IBranchService implements BranchService {
     @Transactional
     public void deleteBranch(Long id) {
         Branch b = branchRepository.findById(id)
-                .orElseThrow(() -> new RuntimeException("Không tìm thấy cơ sở #" + id));
+                .orElseThrow(() -> new BusinessException("Không tìm thấy cơ sở #" + id));
         long stock = inventoryRepository.findByBranch_Id(id).stream()
                 .mapToLong(inv -> Math.max(0, inv.getSoluong()))
                 .sum();
         if (stock > 0) {
-            throw new RuntimeException("Cơ sở vẫn còn " + stock + " sản phẩm tồn kho. Vui lòng chuyển kho hoặc đưa tồn về 0 trước khi xóa (hoặc chuyển sang Tạm ngưng).");
+            throw new BusinessException("Cơ sở vẫn còn " + stock + " sản phẩm tồn kho. Vui lòng chuyển kho hoặc đưa tồn về 0 trước khi xóa (hoặc chuyển sang Tạm ngưng).");
         }
         branchRepository.delete(b);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public Branch requireActiveBranch(Long branchId) {
+        return branchRepository.findById(branchId)
+                .filter(Branch::isActive)
+                .orElseThrow(() -> new BusinessException("Cơ sở nhận hàng không tồn tại hoặc tạm ngưng hoạt động"));
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public Branch requireActiveBranchByCodeOrName(String codeOrName) {
+        String candidateKey = codeOrName != null ? codeOrName.trim() : "";
+        // Also support strings formatted like "HK COMPUTER - Thái Hà — 123 Thái Hà..." from frontend dropdowns
+        String primaryPart = candidateKey.contains("—")
+                ? candidateKey.substring(0, candidateKey.indexOf('—')).trim()
+                : candidateKey;
+        return branchRepository.findByActiveTrueOrderByIdAsc().stream()
+                .filter(b -> b.getCode().equalsIgnoreCase(candidateKey)
+                        || b.getName().equalsIgnoreCase(candidateKey)
+                        || b.getCode().equalsIgnoreCase(primaryPart)
+                        || b.getName().equalsIgnoreCase(primaryPart))
+                .findFirst()
+                .orElseThrow(() -> new BusinessException("Chi nhánh không tồn tại hoặc đã ngừng hoạt động"));
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<Branch> findActiveBranchEntities() {
+        return branchRepository.findByActiveTrueOrderByIdAsc();
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public Long findFirstBranchId() {
+        return branchRepository.findAllByOrderByIdAsc().stream()
+                .findFirst()
+                .map(Branch::getId)
+                .orElse(null);
     }
 
     private List<BranchResponse> toBranchResponses(List<Branch> branches) {

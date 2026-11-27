@@ -1,6 +1,6 @@
 package com.example.MyProject.ORDER.service.impl;
 
-import com.example.MyProject.AUTH.repository.AccountRepository;
+import com.example.MyProject.AUTH.service.AccountService;
 import com.example.MyProject.ORDER.entity.OrderItem;
 import com.example.MyProject.ORDER.entity.Orders;
 import com.example.MyProject.ORDER.entity.Payment;
@@ -9,12 +9,11 @@ import com.example.MyProject.ORDER.repository.PaymentRepository;
 import com.example.MyProject.ORDER.service.AdminDashboardService;
 import com.example.MyProject.PRODUCT.entity.Branch;
 import com.example.MyProject.PRODUCT.entity.Inventory;
-import com.example.MyProject.PRODUCT.repository.BranchRepository;
-import com.example.MyProject.PRODUCT.repository.InventoryRepository;
-import com.example.MyProject.PRODUCT.repository.ProductRepository;
-import com.example.MyProject.REVIEW.repository.RepairBookingRepository;
-import com.example.MyProject.REVIEW.repository.SupportRepository;
-import com.example.MyProject.REVIEW.repository.WarrantyClaimRepository;
+import com.example.MyProject.PRODUCT.service.BranchService;
+import com.example.MyProject.PRODUCT.service.InventoryService;
+import com.example.MyProject.PRODUCT.service.ProductService;
+import com.example.MyProject.REVIEW.service.RepairBookingService;
+import com.example.MyProject.REVIEW.service.WarrantyService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -26,25 +25,24 @@ import java.util.*;
 
 @Service
 @RequiredArgsConstructor
-public class IAdminDashboardService implements AdminDashboardService {
+public class AdminDashboardServiceImpl implements AdminDashboardService {
 
     private final OrdersRepository ordersRepository;
     private final PaymentRepository paymentRepository;
-    private final ProductRepository productRepository;
-    private final InventoryRepository inventoryRepository;
-    private final BranchRepository branchRepository;
-    private final AccountRepository accountRepository;
-    private final WarrantyClaimRepository warrantyClaimRepository;
-    private final RepairBookingRepository repairBookingRepository;
-    private final SupportRepository supportRepository;
+    private final ProductService productService;
+    private final InventoryService inventoryService;
+    private final BranchService branchService;
+    private final AccountService accountService;
+    private final WarrantyService warrantyService;
+    private final RepairBookingService repairBookingService;
 
     @Override
     @Transactional(readOnly = true)
     public Map<String, Object> getDashboardSummary() {
         List<Orders> allOrders = ordersRepository.findAllWithItemsForDashboard();
         List<Payment> allPayments = paymentRepository.findAll();
-        List<Inventory> allInventories = inventoryRepository.findAll();
-        List<Branch> activeBranches = branchRepository.findByActiveTrueOrderByIdAsc();
+        List<Inventory> allInventories = inventoryService.findAllInventories();
+        List<Branch> activeBranches = branchService.findActiveBranchEntities();
 
         BigDecimal totalRevenue = BigDecimal.ZERO;
         long completedOrders = 0;
@@ -199,29 +197,18 @@ public class IAdminDashboardService implements AdminDashboardService {
                 })
                 .toList();
 
-        long pendingWarranties = warrantyClaimRepository.findAll().stream()
-                .filter(w -> w.getStatus() == null || (!"COMPLETED".equalsIgnoreCase(w.getStatus()) && !"REJECTED".equalsIgnoreCase(w.getStatus())))
-                .count();
-        long pendingRepairs = repairBookingRepository.findAll().stream()
-                .filter(r -> r.getStatus() == null || "PENDING".equalsIgnoreCase(r.getStatus()) || "CONFIRMED".equalsIgnoreCase(r.getStatus()))
-                .count();
-        long openSupports = supportRepository.findAll().stream()
-                .filter(s -> s.getStatus() == null || !"CLOSED".equalsIgnoreCase(s.getStatus()))
-                .count();
-
         Map<String, Object> payload = new LinkedHashMap<>();
         payload.put("totalRevenue", totalRevenue);
         payload.put("totalOrders", allOrders.size());
         payload.put("completedOrders", completedOrders);
         payload.put("unpaidOrders", unpaidOrders);
         payload.put("cancelledOrders", cancelledOrders);
-        payload.put("totalProducts", productRepository.count());
-        payload.put("totalCustomers", accountRepository.count());
+        payload.put("totalProducts", productService.countTotalProducts());
+        payload.put("totalCustomers", accountService.countTotalAccounts());
         payload.put("activeBranches", activeBranches.size());
         payload.put("lowStockCount", lowStockCount);
-        payload.put("pendingWarranties", pendingWarranties);
-        payload.put("pendingRepairs", pendingRepairs);
-        payload.put("openSupports", openSupports);
+        payload.put("pendingWarranties", warrantyService.countPendingClaims());
+        payload.put("pendingRepairs", repairBookingService.countPendingBookings());
         payload.put("revenueLast7Days", revenueLast7Days);
         payload.put("revenueByGroup", revenueByGroup);
         payload.put("paymentGateways", gatewayCounts);

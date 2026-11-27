@@ -12,7 +12,7 @@ import com.example.MyProject.PRODUCT.repository.BranchRepository;
 import com.example.MyProject.PRODUCT.repository.InventoryRepository;
 import com.example.MyProject.PRODUCT.repository.ProductRepository;
 import com.example.MyProject.PRODUCT.service.InventoryService;
-import com.example.MyProject.PRODUCT.service.InventoryWebSocketService;
+import com.example.MyProject.common.exception.BusinessException;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -20,6 +20,8 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.ArrayList;
+import java.util.Collections;
+import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -27,31 +29,30 @@ import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
-public class IInventoryService implements InventoryService {
+public class InventoryServiceImpl implements InventoryService {
 
     private final ProductRepository productRepository;
     private final BranchRepository branchRepository;
     private final InventoryRepository inventoryRepository;
     private final InventoryMapper inventoryMapper;
-    private final InventoryWebSocketService inventoryWebSocketService;
 
     @Override
     @Transactional
     public void createInventory(InventoryRequest req) {
         if (req.productId() == null) {
-            throw new RuntimeException("Vui lòng chọn sản phẩm");
+            throw new BusinessException("Vui lòng chọn sản phẩm");
         }
         if (req.soluong() < 0) {
-            throw new RuntimeException("Số lượng tồn kho không được âm");
+            throw new BusinessException("Số lượng tồn kho không được âm");
         }
 
         Products product = productRepository.findById(req.productId())
-                .orElseThrow(() -> new RuntimeException("Sản phẩm không tồn tại"));
+                .orElseThrow(() -> new BusinessException("Sản phẩm không tồn tại"));
 
         if (Boolean.TRUE.equals(req.allBranches())) {
             List<Branch> branches = branchRepository.findByActiveTrueOrderByIdAsc();
             if (branches.isEmpty()) {
-                throw new RuntimeException("Chưa có cơ sở nào đang hoạt động");
+                throw new BusinessException("Chưa có cơ sở nào đang hoạt động");
             }
             for (Branch b : branches) {
                 Optional<Inventory> existing = inventoryRepository.findByProducts_IdAndBranch_Id(product.getId(), b.getId());
@@ -68,17 +69,16 @@ public class IInventoryService implements InventoryService {
                     inventoryRepository.save(inv);
                 }
             }
-            broadcastProductTotalStock(product.getId());
             return;
         }
 
         Branch branch;
         if (req.branchId() != null) {
             branch = branchRepository.findById(req.branchId())
-                    .orElseThrow(() -> new RuntimeException("Không tìm thấy cơ sở #" + req.branchId()));
+                    .orElseThrow(() -> new BusinessException("Không tìm thấy cơ sở #" + req.branchId()));
         } else {
             branch = branchRepository.findAllByOrderByIdAsc().stream().findFirst()
-                    .orElseThrow(() -> new RuntimeException("Hệ thống chưa có cơ sở nào"));
+                    .orElseThrow(() -> new BusinessException("Hệ thống chưa có cơ sở nào"));
         }
 
         Optional<Inventory> existing = inventoryRepository.findByProducts_IdAndBranch_Id(product.getId(), branch.getId());
@@ -86,7 +86,6 @@ public class IInventoryService implements InventoryService {
             Inventory inv = existing.get();
             inv.setSoluong(inv.getSoluong() + req.soluong());
             inventoryRepository.save(inv);
-            broadcastProductTotalStock(product.getId());
             return;
         }
 
@@ -96,59 +95,54 @@ public class IInventoryService implements InventoryService {
         inv.setSoluong(req.soluong());
         inv.setSelled(0);
         inventoryRepository.save(inv);
-        broadcastProductTotalStock(product.getId());
     }
 
     @Override
     @Transactional
     public void updateSoluong(Long id, int luongnhap) {
         if (luongnhap <= 0) {
-            throw new RuntimeException("Số lượng nhập thêm phải lớn hơn 0");
+            throw new BusinessException("Số lượng nhập thêm phải lớn hơn 0");
         }
         Inventory inventory = inventoryRepository.findById(id)
-                .orElseThrow(() -> new RuntimeException("Bản ghi tồn kho không tồn tại"));
+                .orElseThrow(() -> new BusinessException("Bản ghi tồn kho không tồn tại"));
         inventory.setSoluong(Math.max(0, inventory.getSoluong()) + luongnhap);
         inventoryRepository.save(inventory);
-
-        broadcastProductTotalStock(inventory.getProducts().getId());
     }
 
     @Override
     @Transactional
     public void adjustSoluong(Long id, int exactSoluong) {
         if (exactSoluong < 0) {
-            throw new RuntimeException("Số lượng kiểm kê thực tế không được âm");
+            throw new BusinessException("Số lượng kiểm kê thực tế không được âm");
         }
         Inventory inventory = inventoryRepository.findById(id)
-                .orElseThrow(() -> new RuntimeException("Bản ghi tồn kho không tồn tại"));
+                .orElseThrow(() -> new BusinessException("Bản ghi tồn kho không tồn tại"));
         inventory.setSoluong(exactSoluong);
         inventoryRepository.save(inventory);
-
-        broadcastProductTotalStock(inventory.getProducts().getId());
     }
 
     @Override
     @Transactional
     public void transferStock(InventoryTransferRequest req) {
         if (req.productId() == null || req.fromBranchId() == null || req.toBranchId() == null) {
-            throw new RuntimeException("Vui lòng chọn đầy đủ sản phẩm, cơ sở xuất và cơ sở nhận");
+            throw new BusinessException("Vui lòng chọn đầy đủ sản phẩm, cơ sở xuất và cơ sở nhận");
         }
         if (req.fromBranchId().equals(req.toBranchId())) {
-            throw new RuntimeException("Cơ sở xuất và cơ sở nhận phải khác nhau");
+            throw new BusinessException("Cơ sở xuất và cơ sở nhận phải khác nhau");
         }
         if (req.quantity() <= 0) {
-            throw new RuntimeException("Số lượng chuyển kho phải lớn hơn 0");
+            throw new BusinessException("Số lượng chuyển kho phải lớn hơn 0");
         }
 
         Inventory source = inventoryRepository.findByProducts_IdAndBranch_Id(req.productId(), req.fromBranchId())
-                .orElseThrow(() -> new RuntimeException("Cơ sở xuất chưa có kho cho sản phẩm này"));
+                .orElseThrow(() -> new BusinessException("Cơ sở xuất chưa có kho cho sản phẩm này"));
 
         if (source.getSoluong() < req.quantity()) {
-            throw new RuntimeException("Cơ sở xuất chỉ còn " + source.getSoluong() + " sản phẩm, không đủ để chuyển " + req.quantity());
+            throw new BusinessException("Cơ sở xuất chỉ còn " + source.getSoluong() + " sản phẩm, không đủ để chuyển " + req.quantity());
         }
 
         Branch targetBranch = branchRepository.findById(req.toBranchId())
-                .orElseThrow(() -> new RuntimeException("Không tìm thấy cơ sở nhận"));
+                .orElseThrow(() -> new BusinessException("Không tìm thấy cơ sở nhận"));
 
         source.setSoluong(source.getSoluong() - req.quantity());
         inventoryRepository.save(source);
@@ -164,8 +158,6 @@ public class IInventoryService implements InventoryService {
                 });
         target.setSoluong(target.getSoluong() + req.quantity());
         inventoryRepository.save(target);
-
-        broadcastProductTotalStock(req.productId());
     }
 
     @Override
@@ -188,7 +180,7 @@ public class IInventoryService implements InventoryService {
                 null, null, nameProduct, null, Pageable.ofSize(1)
         ).getContent();
         if (list.isEmpty()) {
-            throw new RuntimeException("Không tìm thấy tồn kho cho sản phẩm: " + nameProduct);
+            throw new BusinessException("Không tìm thấy tồn kho cho sản phẩm: " + nameProduct);
         }
         return inventoryMapper.toResponse(list.get(0));
     }
@@ -197,7 +189,7 @@ public class IInventoryService implements InventoryService {
     @Transactional(readOnly = true)
     public InventoryResponseUser detailInventory(Long productId, Long branchId, String city) {
         Products product = productRepository.findById(productId)
-                .orElseThrow(() -> new RuntimeException("Sản phẩm không tồn tại"));
+                .orElseThrow(() -> new BusinessException("Sản phẩm không tồn tại"));
 
         List<Branch> activeBranches = branchRepository.findByActiveTrueOrderByIdAsc();
         List<Inventory> records = inventoryRepository.findAllByProductIdWithBranch(productId);
@@ -265,10 +257,104 @@ public class IInventoryService implements InventoryService {
         return detailInventory(productId, null, null).branches();
     }
 
-    private void broadcastProductTotalStock(Long productId) {
-        List<Inventory> all = inventoryRepository.findByProducts_Id(productId);
-        int total = all.stream().mapToInt(i -> Math.max(0, i.getSoluong())).sum();
-        Long invId = all.isEmpty() ? productId : all.get(0).getId();
-        inventoryWebSocketService.sendStockUpdate(invId, productId, total);
+    @Override
+    @Transactional
+    public Branch allocateStockForOrder(
+            Products product,
+            int quantity,
+            boolean isStorePickup,
+            Branch pickupBranch,
+            Long preferredBranchId,
+            String preferredCity,
+            String shippingAddressText
+    ) {
+        if (isStorePickup) {
+            if (pickupBranch == null) {
+                throw new BusinessException("Vui lòng chọn cơ sở cửa hàng để đến nhận máy");
+            }
+            int updatedRows = inventoryRepository.decreaseStockAtBranch(product.getId(), pickupBranch.getId(), quantity);
+            if (updatedRows == 0) {
+                throw new BusinessException(
+                        "Sản phẩm \"" + product.getNameProduct() + "\" không đủ số lượng tại cơ sở " + pickupBranch.getName()
+                );
+            }
+            return pickupBranch;
+        }
+
+        List<Inventory> available = inventoryRepository.findAllByProductIdWithBranch(product.getId()).stream()
+                .filter(i -> i.getBranch() != null && i.getBranch().isActive() && i.getSoluong() >= quantity)
+                .toList();
+
+        if (available.isEmpty()) {
+            throw new BusinessException("Sản phẩm \"" + product.getNameProduct() + "\" hiện không đủ số lượng (" + quantity + ") tại các cơ sở.");
+        }
+
+        Inventory chosen = null;
+        if (preferredBranchId != null) {
+            chosen = available.stream()
+                    .filter(i -> preferredBranchId.equals(i.getBranch().getId()))
+                    .findFirst()
+                    .orElse(null);
+        }
+
+        if (chosen == null) {
+            String targetCity = (preferredCity != null && !preferredCity.isBlank()) ? preferredCity.trim().toLowerCase() : null;
+            String addrLower = shippingAddressText != null ? shippingAddressText.toLowerCase() : "";
+            chosen = available.stream()
+                    .filter(i -> {
+                        String bCity = i.getBranch().getCity() != null ? i.getBranch().getCity().toLowerCase() : "";
+                        return (targetCity != null && bCity.equals(targetCity))
+                                || (!bCity.isEmpty() && addrLower.contains(bCity));
+                    })
+                    .max(Comparator.comparingInt(Inventory::getSoluong))
+                    .orElse(null);
+        }
+
+        if (chosen == null) {
+            chosen = available.stream()
+                    .max(Comparator.comparingInt(Inventory::getSoluong))
+                    .orElse(available.get(0));
+        }
+
+        int updatedRows = inventoryRepository.decreaseStockAtBranch(product.getId(), chosen.getBranch().getId(), quantity);
+        if (updatedRows == 0) {
+            throw new BusinessException("Sản phẩm \"" + product.getNameProduct() + "\" vừa hết hàng, vui lòng thử lại.");
+        }
+        return chosen.getBranch();
+    }
+
+    @Override
+    @Transactional
+    public void restoreStock(Long productId, Long branchId, int quantity) {
+        if (productId == null || quantity <= 0) {
+            return;
+        }
+        if (branchId != null) {
+            int updatedRows = inventoryRepository.increaseStockAtBranch(productId, branchId, quantity);
+            if (updatedRows > 0) {
+                return;
+            }
+        }
+        List<Inventory> invs = inventoryRepository.findByProducts_Id(productId);
+        if (!invs.isEmpty()) {
+            Inventory first = invs.get(0);
+            first.setSoluong(first.getSoluong() + quantity);
+            inventoryRepository.save(first);
+        }
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<Inventory> findInventoriesByProductIds(List<Long> productIds) {
+        if (productIds == null || productIds.isEmpty()) {
+            return Collections.emptyList();
+        }
+        return inventoryRepository.findByProducts_IdIn(productIds);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<Inventory> findAllInventories() {
+        return inventoryRepository.findAll();
     }
 }

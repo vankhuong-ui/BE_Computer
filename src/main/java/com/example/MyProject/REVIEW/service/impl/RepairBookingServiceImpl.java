@@ -1,14 +1,15 @@
-package com.example.MyProject.REVIEW.service.ipml;
+package com.example.MyProject.REVIEW.service.impl;
 
-import com.example.MyProject.AUTH.common.PhoneValidator;
 import com.example.MyProject.AUTH.entity.Account;
 import com.example.MyProject.PRODUCT.entity.Branch;
-import com.example.MyProject.PRODUCT.repository.BranchRepository;
+import com.example.MyProject.PRODUCT.service.BranchService;
 import com.example.MyProject.REVIEW.dto.repair.RepairBookingRequest;
 import com.example.MyProject.REVIEW.dto.repair.RepairBookingResponse;
 import com.example.MyProject.REVIEW.entity.RepairBooking;
 import com.example.MyProject.REVIEW.repository.RepairBookingRepository;
 import com.example.MyProject.REVIEW.service.RepairBookingService;
+import com.example.MyProject.common.PhoneValidator;
+import com.example.MyProject.common.exception.BusinessException;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -25,26 +26,26 @@ import java.util.Locale;
 
 @Service
 @RequiredArgsConstructor
-public class IRepairBookingService implements RepairBookingService {
+public class RepairBookingServiceImpl implements RepairBookingService {
 
     private final RepairBookingRepository repairBookingRepository;
-    private final BranchRepository branchRepository;
+    private final BranchService branchService;
 
     @Transactional
     @Override
     public RepairBookingResponse createBooking(RepairBookingRequest request) {
         if (request == null) {
-            throw new RuntimeException("Thông tin đặt lịch không được trống");
+            throw new BusinessException("Thông tin đặt lịch không được trống");
         }
         if (request.customerName() == null || request.customerName().isBlank()) {
-            throw new RuntimeException("Vui lòng nhập họ tên khách hàng");
+            throw new BusinessException("Vui lòng nhập họ tên khách hàng");
         }
         String normalizedPhone = PhoneValidator.validateAndNormalize(request.customerPhone());
         String method = request.serviceMethod() == null || request.serviceMethod().isBlank()
                 ? "AT_STORE"
                 : request.serviceMethod().trim().toUpperCase(Locale.ROOT);
         if (!List.of("AT_STORE", "AT_HOME").contains(method)) {
-            throw new RuntimeException("Hình thức sửa chữa không hợp lệ");
+            throw new BusinessException("Hình thức sửa chữa không hợp lệ");
         }
 
         String resolvedBranch = request.branchName() != null ? request.branchName().trim() : "";
@@ -52,31 +53,26 @@ public class IRepairBookingService implements RepairBookingService {
 
         if ("AT_HOME".equals(method)) {
             if (resolvedHomeAddr.isBlank()) {
-                throw new RuntimeException("Vui lòng nhập địa chỉ để kỹ thuật viên đến tận nơi");
+                throw new BusinessException("Vui lòng nhập địa chỉ để kỹ thuật viên đến tận nơi");
             }
             resolvedBranch = "Sửa tại nhà — " + resolvedHomeAddr;
         } else {
             if (resolvedBranch.isBlank()) {
-                throw new RuntimeException("Vui lòng chọn chi nhánh tiếp nhận");
+                throw new BusinessException("Vui lòng chọn chi nhánh tiếp nhận");
             }
-            String selectedBranch = resolvedBranch;
-            Branch branch = branchRepository.findByActiveTrueOrderByIdAsc().stream()
-                    .filter(candidate -> candidate.getCode().equalsIgnoreCase(selectedBranch)
-                            || candidate.getName().equalsIgnoreCase(selectedBranch))
-                    .findFirst()
-                    .orElseThrow(() -> new RuntimeException("Chi nhánh không tồn tại hoặc đã ngừng hoạt động"));
+            Branch branch = branchService.requireActiveBranchByCodeOrName(resolvedBranch);
             resolvedBranch = branch.getName();
         }
 
         if (request.deviceModel() == null || request.deviceModel().isBlank()) {
-            throw new RuntimeException("Vui lòng nhập tên dòng máy / thiết bị");
+            throw new BusinessException("Vui lòng nhập tên dòng máy / thiết bị");
         }
         LocalDate appointmentDate = parseAppointmentDate(request.appointmentDate());
         LocalTime appointmentStart = parseAppointmentTime(request.appointmentTime());
         LocalDate today = LocalDate.now();
         if (appointmentDate.isBefore(today)
                 || (appointmentDate.isEqual(today) && !appointmentStart.isAfter(LocalTime.now()))) {
-            throw new RuntimeException("Ngày và giờ hẹn phải nằm trong tương lai");
+            throw new BusinessException("Ngày và giờ hẹn phải nằm trong tương lai");
         }
 
         Account currentAccount = null;
@@ -127,10 +123,10 @@ public class IRepairBookingService implements RepairBookingService {
         String upper = status != null ? status.trim().toUpperCase(Locale.ROOT) : "";
 
         RepairBooking booking = repairBookingRepository.findById(id)
-                .orElseThrow(() -> new RuntimeException("Không tìm thấy lịch hẹn sửa chữa #" + id));
+                .orElseThrow(() -> new BusinessException("Không tìm thấy lịch hẹn sửa chữa #" + id));
         String currentStatus = booking.getStatus() != null ? booking.getStatus().trim().toUpperCase(Locale.ROOT) : "";
         if (!currentStatus.equals(upper) && !allowedBookingTransitions(currentStatus).contains(upper)) {
-            throw new RuntimeException("Không thể chuyển trạng thái lịch hẹn từ "
+            throw new BusinessException("Không thể chuyển trạng thái lịch hẹn từ "
                     + currentStatus + " sang " + upper);
         }
         booking.setStatus(upper);
@@ -140,37 +136,47 @@ public class IRepairBookingService implements RepairBookingService {
         return toResponse(repairBookingRepository.save(booking));
     }
 
+    @Override
+    @Transactional(readOnly = true)
+    public long countPendingBookings() {
+        return repairBookingRepository.findAll().stream()
+                .filter(r -> r.getStatus() == null
+                        || "PENDING".equalsIgnoreCase(r.getStatus())
+                        || "CONFIRMED".equalsIgnoreCase(r.getStatus()))
+                .count();
+    }
+
     private LocalDate parseAppointmentDate(String value) {
         if (value == null || value.isBlank()) {
-            throw new RuntimeException("Vui lòng chọn ngày hẹn");
+            throw new BusinessException("Vui lòng chọn ngày hẹn");
         }
         try {
             return LocalDate.parse(value.trim());
         } catch (DateTimeParseException e) {
-            throw new RuntimeException("Ngày hẹn phải có định dạng yyyy-MM-dd");
+            throw new BusinessException("Ngày hẹn phải có định dạng yyyy-MM-dd");
         }
     }
 
     private LocalTime parseAppointmentTime(String value) {
         if (value == null || value.isBlank()) {
-            throw new RuntimeException("Vui lòng chọn khung giờ hẹn");
+            throw new BusinessException("Vui lòng chọn khung giờ hẹn");
         }
         String[] times = value.trim().replace('–', '-').split("\\s*-\\s*", -1);
         if (times.length < 1 || times.length > 2) {
-            throw new RuntimeException("Khung giờ phải có định dạng HH:mm hoặc HH:mm - HH:mm");
+            throw new BusinessException("Khung giờ phải có định dạng HH:mm hoặc HH:mm - HH:mm");
         }
         if (!times[0].matches("\\d{2}:\\d{2}")
                 || (times.length == 2 && !times[1].matches("\\d{2}:\\d{2}"))) {
-            throw new RuntimeException("Khung giờ phải có định dạng HH:mm hoặc HH:mm - HH:mm");
+            throw new BusinessException("Khung giờ phải có định dạng HH:mm hoặc HH:mm - HH:mm");
         }
         try {
             LocalTime start = LocalTime.parse(times[0]);
             if (times.length == 2 && !LocalTime.parse(times[1]).isAfter(start)) {
-                throw new RuntimeException("Giờ kết thúc phải sau giờ bắt đầu");
+                throw new BusinessException("Giờ kết thúc phải sau giờ bắt đầu");
             }
             return start;
         } catch (DateTimeParseException e) {
-            throw new RuntimeException("Khung giờ phải có định dạng HH:mm hoặc HH:mm - HH:mm");
+            throw new BusinessException("Khung giờ phải có định dạng HH:mm hoặc HH:mm - HH:mm");
         }
     }
 

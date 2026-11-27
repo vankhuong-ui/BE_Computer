@@ -6,6 +6,7 @@ import com.example.MyProject.PRODUCT.entity.Categories;
 import com.example.MyProject.PRODUCT.mapper.CategoriesMapper;
 import com.example.MyProject.PRODUCT.repository.CategoriesRepository;
 import com.example.MyProject.PRODUCT.service.CategoriesService;
+import com.example.MyProject.common.exception.BusinessException;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
@@ -14,7 +15,7 @@ import java.util.List;
 
 @Service
 @RequiredArgsConstructor
-public class ICategoriesService implements CategoriesService {
+public class CategoriesServiceImpl implements CategoriesService {
 
     private final CategoriesRepository categoriesRepository;
     private final CategoriesMapper categoriesMapper;
@@ -31,7 +32,7 @@ public class ICategoriesService implements CategoriesService {
     @Override
     public void updateCategories(Long id, CategoriesRequest categoriesRequest) {
         Categories categories = categoriesRepository.findById(id)
-                .orElseThrow(() -> new RuntimeException("Categories not exist!"));
+                .orElseThrow(() -> new BusinessException("Danh mục không tồn tại"));
         categoriesMapper.updateCategories(categoriesRequest, categories);
         if (categoriesRequest.groupType() != null && !categoriesRequest.groupType().isBlank()) {
             categories.setGroupType(categoriesRequest.groupType().trim().toUpperCase());

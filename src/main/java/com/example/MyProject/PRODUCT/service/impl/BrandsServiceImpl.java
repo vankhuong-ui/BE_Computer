@@ -6,6 +6,7 @@ import com.example.MyProject.PRODUCT.entity.Brands;
 import com.example.MyProject.PRODUCT.mapper.BrandsMapper;
 import com.example.MyProject.PRODUCT.repository.BrandsRepository;
 import com.example.MyProject.PRODUCT.service.BrandsService;
+import com.example.MyProject.common.exception.BusinessException;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
@@ -14,7 +15,8 @@ import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
-public class IBrandsService implements BrandsService {
+public class BrandsServiceImpl implements BrandsService {
+
     private final BrandsRepository brandsRepository;
     private final BrandsMapper brandsMapper;
 
@@ -25,27 +27,29 @@ public class IBrandsService implements BrandsService {
 
     @Override
     public void UpdateBrands(long id, BrandsRequest brandsRequest) {
-           Brands brandsnew =brandsRepository.findById(id).orElseThrow(()-> new RuntimeException("brands not exist"));
-           brandsMapper.updateBrands(brandsRequest,brandsnew);
-           brandsRepository.save(brandsnew);
+        Brands brandsnew = brandsRepository.findById(id)
+                .orElseThrow(() -> new BusinessException("Thương hiệu không tồn tại"));
+        brandsMapper.updateBrands(brandsRequest, brandsnew);
+        brandsRepository.save(brandsnew);
     }
 
     @Override
     public List<BrandsResponse> BrandsList() {
-        List<Brands> brandsList = brandsRepository.findAll();
-        return brandsList.stream()
+        return brandsRepository.findAll().stream()
                 .map(brandsMapper::mapToresponse)
                 .collect(Collectors.toList());
     }
 
     @Override
     public void DeleteBrands(long id) {
-           brandsRepository.deleteById(id);
+        brandsRepository.deleteById(id);
     }
 
     @Override
     public BrandsResponse searchBrands(String nameBrands) {
-        BrandsResponse brandsResponse =brandsMapper.mapToresponse(brandsRepository.findByNameBrands(nameBrands).orElseThrow(()-> new RuntimeException("Brands not exist")));
-        return brandsResponse;
+        return brandsMapper.mapToresponse(
+                brandsRepository.findByNameBrands(nameBrands)
+                        .orElseThrow(() -> new BusinessException("Thương hiệu không tồn tại"))
+        );
     }
 }

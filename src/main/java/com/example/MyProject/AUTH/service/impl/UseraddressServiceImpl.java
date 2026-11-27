@@ -1,6 +1,5 @@
 package com.example.MyProject.AUTH.service.impl;
 
-import com.example.MyProject.AUTH.common.PhoneValidator;
 import com.example.MyProject.AUTH.dto.address.request.UseraddressRequest;
 import com.example.MyProject.AUTH.dto.address.response.UseraddressResponse;
 import com.example.MyProject.AUTH.entity.Account;
@@ -8,9 +7,9 @@ import com.example.MyProject.AUTH.entity.Useraddresses;
 import com.example.MyProject.AUTH.mapper.UseraddressMapper;
 import com.example.MyProject.AUTH.repository.UseraddressRepository;
 import com.example.MyProject.AUTH.service.UseraddressService;
+import com.example.MyProject.common.PhoneValidator;
+import com.example.MyProject.common.exception.BusinessException;
 import lombok.RequiredArgsConstructor;
-import org.springframework.data.domain.Page;
-import org.springframework.data.domain.Pageable;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -19,7 +18,7 @@ import java.util.List;
 
 @Service
 @RequiredArgsConstructor
-public class IUseraddressService implements UseraddressService {
+public class UseraddressServiceImpl implements UseraddressService {
 
     private final UseraddressMapper useraddressMapper;
     private final UseraddressRepository useraddressRepository;
@@ -30,7 +29,7 @@ public class IUseraddressService implements UseraddressService {
         Account account = getCurrentAccount();
         List<Useraddresses> useraddressList = useraddressRepository.findByAccountId(account.getId());
         if (useraddressList.size() >= 5) {
-            throw new RuntimeException("Mỗi tài khoản chỉ được đăng ký tối đa 5 địa chỉ nhận hàng");
+            throw new BusinessException("Mỗi tài khoản chỉ được đăng ký tối đa 5 địa chỉ nhận hàng");
         }
         String normalizedPhone = PhoneValidator.validateAndNormalize(useraddressRequest.phone());
         Useraddresses useraddresses = useraddressMapper.toEntity(useraddressRequest);
@@ -43,8 +42,7 @@ public class IUseraddressService implements UseraddressService {
     @Transactional
     public void updateUseraddress(Long id, UseraddressRequest useraddressRequest) {
         Account account = getCurrentAccount();
-        Useraddresses useraddresses = useraddressRepository.findByIdAndAccountId(id, account.getId())
-                .orElseThrow(() -> new RuntimeException("Địa chỉ không tồn tại hoặc không thuộc tài khoản của bạn"));
+        Useraddresses useraddresses = requireOwnedAddress(id, account.getId());
         String normalizedPhone = null;
         if (useraddressRequest.phone() != null) {
             normalizedPhone = PhoneValidator.validateAndNormalize(useraddressRequest.phone());
@@ -57,26 +55,11 @@ public class IUseraddressService implements UseraddressService {
     }
 
     @Override
-    @Transactional(readOnly = true)
-    public Page<UseraddressResponse> showList(Pageable pageable) {
-        return useraddressRepository.findAll(pageable).map(useraddressMapper::toRespon);
-    }
-
-    @Override
     @Transactional
     public void deleteUseraddress(Long id) {
         Account account = getCurrentAccount();
-        Useraddresses useraddresses = useraddressRepository.findByIdAndAccountId(id, account.getId())
-                .orElseThrow(() -> new RuntimeException("Địa chỉ không tồn tại hoặc không thuộc tài khoản của bạn"));
+        Useraddresses useraddresses = requireOwnedAddress(id, account.getId());
         useraddressRepository.delete(useraddresses);
-    }
-
-    @Override
-    @Transactional(readOnly = true)
-    public List<UseraddressResponse> searchUseraddress(String nameUseraddress) {
-        return useraddressRepository.findByUsername(nameUseraddress).stream()
-                .map(useraddressMapper::toRespon)
-                .toList();
     }
 
     @Override
@@ -86,6 +69,50 @@ public class IUseraddressService implements UseraddressService {
         return useraddressRepository.findByAccountId(account.getId()).stream()
                 .map(useraddressMapper::toRespon)
                 .toList();
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public Useraddresses requireOwnedAddress(Long addressId, Long accountId) {
+        return useraddressRepository.findByIdAndAccountId(addressId, accountId)
+                .orElseThrow(() -> new BusinessException("Địa chỉ không tồn tại hoặc không thuộc tài khoản của bạn"));
+    }
+
+    @Override
+    @Transactional
+    public Useraddresses resolveAddressForOrder(
+            Account account,
+            Long addressId,
+            boolean isStorePickup,
+            String receiverName,
+            String receiverPhone,
+            String pickupAddressSummary
+    ) {
+        Long accountId = account.getId();
+        if (addressId != null) {
+            return requireOwnedAddress(addressId, accountId);
+        }
+        if (isStorePickup) {
+            List<Useraddresses> userAddrs = useraddressRepository.findByAccountId(accountId);
+            if (!userAddrs.isEmpty()) {
+                return userAddrs.stream()
+                        .filter(a -> Boolean.TRUE.equals(a.getDefaultaddress()))
+                        .findFirst()
+                        .orElse(userAddrs.get(0));
+            }
+            Useraddresses autoAddr = new Useraddresses();
+            autoAddr.setAccount(account);
+            autoAddr.setUsername(receiverName != null && !receiverName.isBlank()
+                    ? receiverName.trim()
+                    : (account.getAccountname() != null ? account.getAccountname() : "Khách hàng"));
+            autoAddr.setPhone(receiverPhone != null && !receiverPhone.isBlank()
+                    ? PhoneValidator.validateAndNormalize(receiverPhone)
+                    : "0900000000");
+            autoAddr.setAddress(pickupAddressSummary);
+            autoAddr.setDefaultaddress(true);
+            return useraddressRepository.save(autoAddr);
+        }
+        throw new BusinessException("Vui lòng chọn địa chỉ giao hàng");
     }
 
     private Account getCurrentAccount() {

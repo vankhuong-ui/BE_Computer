@@ -15,6 +15,7 @@ import com.example.MyProject.PRODUCT.repository.InventoryRepository;
 import com.example.MyProject.PRODUCT.repository.ProductRepository;
 import com.example.MyProject.PRODUCT.service.InventoryService;
 import com.example.MyProject.PRODUCT.service.ProductService;
+import com.example.MyProject.common.exception.BusinessException;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageImpl;
@@ -29,7 +30,7 @@ import java.util.*;
 
 @Service
 @RequiredArgsConstructor
-public class IProductService implements ProductService {
+public class ProductServiceImpl implements ProductService {
 
     private final ProductRepository productRepository;
     private final BrandsRepository brandsRepository;
@@ -47,12 +48,12 @@ public class IProductService implements ProductService {
         }
         if (requestProduct.brandsId() != null) {
             Brands b = brandsRepository.findById(requestProduct.brandsId())
-                    .orElseThrow(() -> new RuntimeException("Thương hiệu không tồn tại"));
+                    .orElseThrow(() -> new BusinessException("Thương hiệu không tồn tại"));
             entity.setBrands(b);
         }
         if (requestProduct.categoriesId() != null) {
             Categories c = categoriesRepository.findById(requestProduct.categoriesId())
-                    .orElseThrow(() -> new RuntimeException("Danh mục không tồn tại"));
+                    .orElseThrow(() -> new BusinessException("Danh mục không tồn tại"));
             entity.setCategories(c);
         }
         Products saved = productRepository.save(entity);
@@ -70,17 +71,16 @@ public class IProductService implements ProductService {
     @Override
     @Transactional
     public void updateProduct(Long id, RequestProduct requestProduct) {
-        Products products = productRepository.findById(id)
-                .orElseThrow(() -> new RuntimeException("product not exist"));
+        Products products = requireProductById(id);
         productMapper.updateProduct(requestProduct, products);
         if (requestProduct.brandsId() != null) {
             Brands b = brandsRepository.findById(requestProduct.brandsId())
-                    .orElseThrow(() -> new RuntimeException("Thương hiệu không tồn tại"));
+                    .orElseThrow(() -> new BusinessException("Thương hiệu không tồn tại"));
             products.setBrands(b);
         }
         if (requestProduct.categoriesId() != null) {
             Categories c = categoriesRepository.findById(requestProduct.categoriesId())
-                    .orElseThrow(() -> new RuntimeException("Danh mục không tồn tại"));
+                    .orElseThrow(() -> new BusinessException("Danh mục không tồn tại"));
             products.setCategories(c);
         }
         if (products.getSlug() == null || products.getSlug().isBlank()) {
@@ -106,7 +106,6 @@ public class IProductService implements ProductService {
     @Override
     @Transactional(readOnly = true)
     public Page<ResponseProduct> listWithCategoriesAndBrands(Long categoryId, Long brandId, Pageable pageable) {
-        // Sửa lỗi đảo ngược tham số: id1 là categoryId, id2 là brandId
         Page<Products> pageproduct = productRepository.findByBrands_IdAndCategories_Id(brandId, categoryId, pageable);
         return enrichProductPage(pageproduct, null, null);
     }
@@ -204,7 +203,7 @@ public class IProductService implements ProductService {
         List<Inventory> inventories = inventoryRepository.findByProducts_Id(id);
         int totalStock = inventories.stream().mapToInt(i -> Math.max(0, i.getSoluong())).sum();
         if (totalStock > 0) {
-            throw new RuntimeException("Sản phẩm vẫn còn " + totalStock + " tồn kho tại các cơ sở, không thể xóa!");
+            throw new BusinessException("Sản phẩm vẫn còn " + totalStock + " tồn kho tại các cơ sở, không thể xóa!");
         }
         inventoryRepository.deleteAll(inventories);
         productRepository.deleteById(id);
@@ -223,8 +222,7 @@ public class IProductService implements ProductService {
     @Override
     @Transactional(readOnly = true)
     public ResponseProduct Showonly(Long id) {
-        Products p = productRepository.findById(id)
-                .orElseThrow(() -> new RuntimeException("Không tìm thấy sản phẩm"));
+        Products p = requireProductById(id);
         return enrichProductList(List.of(p), null, null).get(0);
     }
 
@@ -232,11 +230,38 @@ public class IProductService implements ProductService {
     @Transactional(readOnly = true)
     public ResponseProduct getBySlug(String slug) {
         if (slug == null || slug.isBlank()) {
-            throw new RuntimeException("Thiếu đường dẫn sản phẩm (slug)");
+            throw new BusinessException("Thiếu đường dẫn sản phẩm (slug)");
         }
         Products p = productRepository.findBySlugWithBrandAndCategory(slug.trim())
-                .orElseThrow(() -> new RuntimeException("Không tìm thấy sản phẩm: " + slug));
+                .orElseThrow(() -> new BusinessException("Không tìm thấy sản phẩm: " + slug));
         return enrichProductList(List.of(p), null, null).get(0);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public Products requireProductById(Long productId) {
+        if (productId == null) {
+            throw new BusinessException("Mã sản phẩm không được để trống");
+        }
+        return productRepository.findById(productId)
+                .orElseThrow(() -> new BusinessException("Sản phẩm không tồn tại: #" + productId));
+    }
+
+    @Override
+    public ResponseProduct toProductResponse(Products product) {
+        return productMapper.toReponse(product);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<Products> findAllCatalogProductsWithBrandAndCategory() {
+        return productRepository.findAllWithBrandAndCategory();
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public long countTotalProducts() {
+        return productRepository.count();
     }
 
     private Page<ResponseProduct> enrichProductPage(Page<Products> page, Long branchId, String city) {

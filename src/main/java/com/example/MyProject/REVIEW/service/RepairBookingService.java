@@ -10,4 +10,5 @@ public interface RepairBookingService {
     Page<RepairBookingResponse> getMyBookings(Pageable pageable);
     Page<RepairBookingResponse> getAllBookings(Pageable pageable);
     RepairBookingResponse updateBookingStatus(Long id, String status, String adminNote);
+    long countPendingBookings();
 }

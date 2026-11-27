@@ -15,4 +15,5 @@ public interface WarrantyService {
     Page<WarrantyClaimResponse> getMyClaims(Pageable pageable);
     Page<WarrantyClaimResponse> getAllClaims(Pageable pageable);
     WarrantyClaimResponse updateClaimStatus(Long id, String status, String adminNote);
+    long countPendingClaims();
 }

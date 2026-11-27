@@ -1,6 +1,5 @@
 package com.example.MyProject.AUTH.service.impl;
 
-
 import com.example.MyProject.AUTH.service.RedisOtpService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.redis.core.StringRedisTemplate;
@@ -10,7 +9,7 @@ import java.time.Duration;
 
 @Service
 @RequiredArgsConstructor
-public class IRedisOtpService implements RedisOtpService {
+public class RedisOtpServiceImpl implements RedisOtpService {
 
     private final StringRedisTemplate redisTemplate;
 
@@ -20,24 +19,16 @@ public class IRedisOtpService implements RedisOtpService {
 
     @Override
     public void saveOtp(String gmail, String otp) {
-
-        redisTemplate.opsForValue().set(
-                getOtpKey(gmail),
-                otp,
-                Duration.ofMinutes(5)
-        );
+        redisTemplate.opsForValue().set(getOtpKey(gmail), otp, Duration.ofMinutes(5));
     }
 
     @Override
     public String getOtp(String gmail) {
-
-        return redisTemplate.opsForValue()
-                .get(getOtpKey(gmail));
+        return redisTemplate.opsForValue().get(getOtpKey(gmail));
     }
 
     @Override
     public void deleteOtp(String gmail) {
-
         redisTemplate.delete(getOtpKey(gmail));
     }
 }

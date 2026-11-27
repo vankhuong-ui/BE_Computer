@@ -12,12 +12,14 @@ import com.example.MyProject.AUTH.security.service.EmailVerificationService;
 import com.example.MyProject.AUTH.security.service.RefreshTokenService;
 import com.example.MyProject.AUTH.service.AccountService;
 import com.example.MyProject.AUTH.service.RedisRateLimiterService;
+import com.example.MyProject.common.exception.BusinessException;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.context.annotation.Lazy;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.security.authentication.AuthenticationManager;
+import org.springframework.security.authentication.BadCredentialsException;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
@@ -32,7 +34,7 @@ import java.util.Map;
 @Slf4j
 @Service
 @RequiredArgsConstructor
-public class IAccountService implements AccountService {
+public class AccountServiceImpl implements AccountService {
 
     private final AccountRepository accountRepository;
     private final AccountMapper accountMapper;
@@ -48,7 +50,7 @@ public class IAccountService implements AccountService {
     public void create(AccountRequest rq) {
         Account ac = accountMapper.toEntity(rq);
         if (accountRepository.existsBygmail(ac.getGmail())) {
-            throw new RuntimeException("Tài khoản đã tồn tại");
+            throw new BusinessException("Tài khoản đã tồn tại");
         }
         ac.setPassword(passwordEncoder.encode(rq.password()));
         ac.setEnabled(false);
@@ -59,7 +61,7 @@ public class IAccountService implements AccountService {
     @Override
     public void changeAccountStatus(Long id, Boolean enabled) {
         Account account = accountRepository.findById(id)
-                .orElseThrow(() -> new RuntimeException("Account not found"));
+                .orElseThrow(() -> new BusinessException("Không tìm thấy tài khoản"));
         account.setEnabled(enabled);
         accountRepository.save(account);
     }
@@ -74,7 +76,7 @@ public class IAccountService implements AccountService {
     public List<AccountResponse> searchByEmail(String accountname, String email) {
         List<Account> list = accountRepository.findByGmailOrAccountname(email, accountname);
         if (list.isEmpty()) {
-            throw new RuntimeException("User not exist");
+            throw new BusinessException("Không tìm thấy tài khoản phù hợp");
         }
         List<AccountResponse> listrq = new ArrayList<>();
         for (Account ac : list) {
@@ -89,13 +91,13 @@ public class IAccountService implements AccountService {
         String gmail = authentication.getName();
 
         Account account = accountRepository.findBygmail(gmail)
-                .orElseThrow(() -> new RuntimeException("Tài khoản không tồn tại"));
+                .orElseThrow(() -> new BusinessException("Tài khoản không tồn tại"));
         if (account.getPassword() == null) {
             account.setPassword(passwordEncoder.encode(newPassword));
             accountRepository.save(account);
         } else {
             if (!passwordEncoder.matches(password, account.getPassword())) {
-                throw new RuntimeException("Password is false");
+                throw new BusinessException("Mật khẩu hiện tại không chính xác");
             }
             account.setPassword(passwordEncoder.encode(newPassword));
             accountRepository.save(account);
@@ -106,7 +108,7 @@ public class IAccountService implements AccountService {
     public void seenGmail(String gmail) {
         String normalizedEmail = gmail != null ? gmail.trim().toLowerCase() : "";
         if (!rateLimiterService.allowRequest("otp:" + normalizedEmail, 1, Duration.ofSeconds(60))) {
-            throw new RuntimeException("Vui lòng đợi 60 giây trước khi yêu cầu gửi lại mã OTP");
+            throw new BusinessException("Vui lòng đợi 60 giây trước khi yêu cầu gửi lại mã OTP");
         }
         emailVerificationService.sendOtp(gmail);
     }
@@ -115,11 +117,11 @@ public class IAccountService implements AccountService {
     public void checkCode(String gmail, String code) {
         if (emailVerificationService.verifyOtp(gmail, code)) {
             Account account = accountRepository.findBygmail(gmail)
-                    .orElseThrow(() -> new RuntimeException("account not found"));
+                    .orElseThrow(() -> new BusinessException("Tài khoản không tồn tại"));
             account.setEnabled(true);
             accountRepository.save(account);
         } else {
-            throw new RuntimeException("Code is false");
+            throw new BusinessException("Mã xác thực OTP không đúng hoặc đã hết hạn");
         }
     }
 
@@ -127,11 +129,11 @@ public class IAccountService implements AccountService {
     public void saveNewPasswrod(String gmail, String code, String newPasswrod) {
         if (emailVerificationService.verifyOtp(gmail, code)) {
             Account account = accountRepository.findBygmail(gmail)
-                    .orElseThrow(() -> new RuntimeException("account not found"));
+                    .orElseThrow(() -> new BusinessException("Tài khoản không tồn tại"));
             account.setPassword(passwordEncoder.encode(newPasswrod));
             accountRepository.save(account);
         } else {
-            throw new RuntimeException("Code is false");
+            throw new BusinessException("Mã xác thực OTP không đúng hoặc đã hết hạn");
         }
     }
 
@@ -139,7 +141,7 @@ public class IAccountService implements AccountService {
     public boolean hasPassword() {
         Account account = (Account) SecurityContextHolder.getContext().getAuthentication().getPrincipal();
         Account fullAccount = accountRepository.findById(account.getId())
-                .orElseThrow(() -> new RuntimeException("Tài khoản không tồn tại"));
+                .orElseThrow(() -> new BusinessException("Tài khoản không tồn tại"));
         return fullAccount.getPassword() != null && !fullAccount.getPassword().isEmpty();
     }
 
@@ -160,12 +162,12 @@ public class IAccountService implements AccountService {
     @Override
     public Map<String, String> refreshAccessToken(String refreshTokenStr) {
         if (refreshTokenStr == null || refreshTokenStr.isBlank()) {
-            throw new RuntimeException("Refresh token not found");
+            throw new BadCredentialsException("Refresh token not found");
         }
         RefreshToken refreshToken = refreshTokenService.finByToken(refreshTokenStr)
-                .orElseThrow(() -> new RuntimeException("Refresh token không tồn tại"));
+                .orElseThrow(() -> new BadCredentialsException("Refresh token không tồn tại"));
         if (refreshToken.isRevoked()) {
-            throw new RuntimeException("Refresh token đã bị thu hồi");
+            throw new BadCredentialsException("Refresh token đã bị thu hồi");
         }
         RefreshToken verifiedToken = refreshTokenService.verifyExpiration(refreshToken);
         Account account = verifiedToken.getAccount();
@@ -187,7 +189,7 @@ public class IAccountService implements AccountService {
     public AuthSessionResult verifyCodeAndCreateSession(String gmail, String code) {
         checkCode(gmail, code);
         Account account = accountRepository.findBygmail(gmail)
-                .orElseThrow(() -> new RuntimeException("Account not found"));
+                .orElseThrow(() -> new BusinessException("Tài khoản không tồn tại"));
         RefreshToken refreshToken = refreshTokenService.createRefreshToken(account.getId());
         log.debug("OTP verification success: accountId={}", account.getId());
         return new AuthSessionResult(accountMapper.toResponse(account), refreshToken.getToken());
@@ -197,7 +199,12 @@ public class IAccountService implements AccountService {
     public AccountResponse resetForgotPassword(String gmail, String code, String newPassword) {
         saveNewPasswrod(gmail, code, newPassword);
         Account account = accountRepository.findBygmail(gmail)
-                .orElseThrow(() -> new RuntimeException("gmail not found"));
+                .orElseThrow(() -> new BusinessException("Tài khoản không tồn tại"));
         return accountMapper.toResponse(account);
+    }
+
+    @Override
+    public long countTotalAccounts() {
+        return accountRepository.count();
     }
 }

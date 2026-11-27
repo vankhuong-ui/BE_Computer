@@ -3,10 +3,12 @@ package com.example.MyProject.PRODUCT.service;
 import com.example.MyProject.PRODUCT.dto.product.request.RequestProduct;
 import com.example.MyProject.PRODUCT.dto.product.response.ResponseProduct;
 import com.example.MyProject.PRODUCT.dto.product.response.ResponseSearchProduct;
+import com.example.MyProject.PRODUCT.entity.Products;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 
 import java.math.BigDecimal;
+import java.util.List;
 
 public interface ProductService {
     void createProduct(RequestProduct requestProduct);
@@ -33,4 +35,9 @@ public interface ProductService {
     ResponseSearchProduct searchProduct(String nameProduct, Pageable pageable);
     ResponseProduct Showonly(Long id);
     ResponseProduct getBySlug(String slug);
+
+    Products requireProductById(Long productId);
+    ResponseProduct toProductResponse(Products product);
+    List<Products> findAllCatalogProductsWithBrandAndCategory();
+    long countTotalProducts();
 }
