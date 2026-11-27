@@ -3,19 +3,20 @@ package com.example.MyProject.REVIEW.service;
 import com.example.MyProject.AUTH.entity.Account;
 import com.example.MyProject.ORDER.entity.OrderItem;
 import com.example.MyProject.ORDER.entity.Orders;
-import com.example.MyProject.ORDER.repository.OrdersRepository;
+import com.example.MyProject.ORDER.service.OrdersService;
 import com.example.MyProject.PRODUCT.entity.Branch;
 import com.example.MyProject.PRODUCT.entity.Categories;
 import com.example.MyProject.PRODUCT.entity.Products;
-import com.example.MyProject.PRODUCT.repository.BranchRepository;
+import com.example.MyProject.PRODUCT.service.BranchService;
 import com.example.MyProject.REVIEW.dto.repair.RepairBookingRequest;
 import com.example.MyProject.REVIEW.dto.warranty.WarrantyClaimRequest;
 import com.example.MyProject.REVIEW.entity.RepairBooking;
 import com.example.MyProject.REVIEW.entity.WarrantyClaim;
 import com.example.MyProject.REVIEW.repository.RepairBookingRepository;
 import com.example.MyProject.REVIEW.repository.WarrantyClaimRepository;
-import com.example.MyProject.REVIEW.service.ipml.IRepairBookingService;
-import com.example.MyProject.REVIEW.service.ipml.IWarrantyService;
+import com.example.MyProject.REVIEW.service.impl.RepairBookingServiceImpl;
+import com.example.MyProject.REVIEW.service.impl.WarrantyServiceImpl;
+import com.example.MyProject.common.exception.BusinessException;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -24,6 +25,7 @@ import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.core.context.SecurityContextHolder;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
@@ -38,7 +40,6 @@ import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
-import org.springframework.security.core.context.SecurityContextHolder;
 
 @ExtendWith(MockitoExtension.class)
 class WarrantyRepairWorkflowTest {
@@ -47,19 +48,19 @@ class WarrantyRepairWorkflowTest {
     private WarrantyClaimRepository warrantyClaimRepository;
 
     @Mock
-    private OrdersRepository ordersRepository;
+    private OrdersService ordersService;
 
     @Mock
     private RepairBookingRepository repairBookingRepository;
 
     @Mock
-    private BranchRepository branchRepository;
+    private BranchService branchService;
 
     @InjectMocks
-    private IWarrantyService warrantyService;
+    private WarrantyServiceImpl warrantyService;
 
     @InjectMocks
-    private IRepairBookingService repairBookingService;
+    private RepairBookingServiceImpl repairBookingService;
 
     @AfterEach
     void clearSecurityContext() {
@@ -70,7 +71,7 @@ class WarrantyRepairWorkflowTest {
     void warrantyLookupReturnsPerUnitCardsFromPaymentTimeAndScopesOrderToOwner() {
         Account account = authenticatedAccount(42L, "USER");
         Orders order = paidOrderWithTwoUnits();
-        when(ordersRepository.findByIdAndAccountIdWithDetails(15L, account.getId()))
+        when(ordersService.findOrderForWarrantyLookup(15L, account.getId(), false))
                 .thenReturn(Optional.of(order));
 
         var cards = warrantyService.lookupWarranty("15");
@@ -79,8 +80,7 @@ class WarrantyRepairWorkflowTest {
         assertThat(cards).extracting("serialCode")
                 .containsExactly("BH-15-8-1", "BH-15-8-2");
         assertThat(cards).allSatisfy(card -> assertThat(card.purchaseDate()).isEqualTo(order.getPaidAt()));
-        verify(ordersRepository).findByIdAndAccountIdWithDetails(15L, account.getId());
-        verify(ordersRepository, never()).findByIdWithDetails(any());
+        verify(ordersService).findOrderForWarrantyLookup(15L, account.getId(), false);
     }
 
     @Test
@@ -89,7 +89,7 @@ class WarrantyRepairWorkflowTest {
         when(warrantyClaimRepository.findById(9L)).thenReturn(Optional.of(claim));
 
         assertThatThrownBy(() -> warrantyService.updateClaimStatus(9L, "REPAIRING", null))
-                .isInstanceOf(RuntimeException.class)
+                .isInstanceOf(BusinessException.class)
                 .hasMessageContaining("Không thể chuyển trạng thái");
         verify(warrantyClaimRepository, never()).save(any());
     }
@@ -98,8 +98,7 @@ class WarrantyRepairWorkflowTest {
     void warrantyClaimTargetsTheRequestedUnitAndUsesPaymentDate() {
         Account account = authenticatedAccount(42L, "USER");
         Orders order = paidOrderWithTwoUnits();
-        when(ordersRepository.findForWarrantyClaimByIdAndAccountId(15L, account.getId()))
-                .thenReturn(Optional.of(order));
+        when(ordersService.requireOrderForWarrantyClaim(15L, account.getId())).thenReturn(order);
         when(warrantyClaimRepository.findFirstByOrderIdAndProductIdAndUnitNumberAndStatusIn(
                 eq(15L), eq(8L), eq(2), anyList()
         )).thenReturn(Optional.empty());
@@ -114,12 +113,12 @@ class WarrantyRepairWorkflowTest {
         assertThat(claim.unitNumber()).isEqualTo(2);
         assertThat(claim.serialCode()).isEqualTo("BH-15-8-2");
         assertThat(claim.warrantyExpireDate()).isEqualTo(order.getPaidAt().plusMonths(12));
-        verify(ordersRepository).findForWarrantyClaimByIdAndAccountId(15L, account.getId());
+        verify(ordersService).requireOrderForWarrantyClaim(15L, account.getId());
     }
 
     @Test
     void repairBookingRejectsPastAppointment() {
-        when(branchRepository.findByActiveTrueOrderByIdAsc()).thenReturn(List.of(activeBranch()));
+        when(branchService.requireActiveBranchByCodeOrName("HN-THAIHA")).thenReturn(activeBranch());
         RepairBookingRequest request = repairRequest(
                 "AT_STORE",
                 "HN-THAIHA",
@@ -128,22 +127,23 @@ class WarrantyRepairWorkflowTest {
         );
 
         assertThatThrownBy(() -> repairBookingService.createBooking(request))
-                .isInstanceOf(RuntimeException.class)
+                .isInstanceOf(BusinessException.class)
                 .hasMessageContaining("tương lai");
         verify(repairBookingRepository, never()).save(any());
     }
 
     @Test
     void repairBookingOnlyAcceptsActiveBranchesAndKnownServiceMethods() {
-        when(branchRepository.findByActiveTrueOrderByIdAsc()).thenReturn(List.of(activeBranch()));
+        when(branchService.requireActiveBranchByCodeOrName("UNKNOWN"))
+                .thenThrow(new BusinessException("Chi nhánh không tồn tại hoặc đã ngừng hoạt động"));
 
         assertThatThrownBy(() -> repairBookingService.createBooking(
                 repairRequest("AT_STORE", "UNKNOWN", LocalDate.now().plusDays(1).toString(), "09:00")
-        )).hasMessageContaining("Chi nhánh không tồn tại");
+        )).isInstanceOf(BusinessException.class).hasMessageContaining("Chi nhánh không tồn tại");
 
         assertThatThrownBy(() -> repairBookingService.createBooking(
                 repairRequest("INVALID", "HN-THAIHA", LocalDate.now().plusDays(1).toString(), "09:00")
-        )).hasMessageContaining("Hình thức sửa chữa không hợp lệ");
+        )).isInstanceOf(BusinessException.class).hasMessageContaining("Hình thức sửa chữa không hợp lệ");
         verify(repairBookingRepository, never()).save(any());
     }
 
@@ -153,6 +153,7 @@ class WarrantyRepairWorkflowTest {
         when(repairBookingRepository.findById(7L)).thenReturn(Optional.of(booking));
 
         assertThatThrownBy(() -> repairBookingService.updateBookingStatus(7L, "IN_PROGRESS", null))
+                .isInstanceOf(BusinessException.class)
                 .hasMessageContaining("Không thể chuyển trạng thái");
         verify(repairBookingRepository, never()).save(any());
     }
@@ -160,7 +161,7 @@ class WarrantyRepairWorkflowTest {
     @Test
     void repairBookingStoresNormalizedDateAndCanonicalBranchName() {
         Branch branch = activeBranch();
-        when(branchRepository.findByActiveTrueOrderByIdAsc()).thenReturn(List.of(branch));
+        when(branchService.requireActiveBranchByCodeOrName("hn-thaiha")).thenReturn(branch);
         when(repairBookingRepository.save(any(RepairBooking.class)))
                 .thenAnswer(invocation -> invocation.getArgument(0));
         RepairBookingRequest request = repairRequest(

@@ -1,6 +1,6 @@
 package com.example.MyProject.ORDER.service;
 
-import com.example.MyProject.AUTH.repository.AccountRepository;
+import com.example.MyProject.AUTH.service.AccountService;
 import com.example.MyProject.AUTH.service.RedisRateLimiterService;
 import com.example.MyProject.ORDER.controller.AdminDashboardController;
 import com.example.MyProject.ORDER.entity.OrderItem;
@@ -8,17 +8,16 @@ import com.example.MyProject.ORDER.entity.Orders;
 import com.example.MyProject.ORDER.entity.Payment;
 import com.example.MyProject.ORDER.repository.OrdersRepository;
 import com.example.MyProject.ORDER.repository.PaymentRepository;
-import com.example.MyProject.ORDER.service.impl.IAdminDashboardService;
+import com.example.MyProject.ORDER.service.impl.AdminDashboardServiceImpl;
 import com.example.MyProject.PRODUCT.entity.Branch;
 import com.example.MyProject.PRODUCT.entity.Categories;
 import com.example.MyProject.PRODUCT.entity.Inventory;
 import com.example.MyProject.PRODUCT.entity.Products;
-import com.example.MyProject.PRODUCT.repository.BranchRepository;
-import com.example.MyProject.PRODUCT.repository.InventoryRepository;
-import com.example.MyProject.PRODUCT.repository.ProductRepository;
-import com.example.MyProject.REVIEW.repository.RepairBookingRepository;
-import com.example.MyProject.REVIEW.repository.SupportRepository;
-import com.example.MyProject.REVIEW.repository.WarrantyClaimRepository;
+import com.example.MyProject.PRODUCT.service.BranchService;
+import com.example.MyProject.PRODUCT.service.InventoryService;
+import com.example.MyProject.PRODUCT.service.ProductService;
+import com.example.MyProject.REVIEW.service.RepairBookingService;
+import com.example.MyProject.REVIEW.service.WarrantyService;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
@@ -43,13 +42,12 @@ class BackendUpgradesTest {
     @Mock private OrdersRepository ordersRepository;
     @Mock private OrdersService ordersService;
     @Mock private PaymentRepository paymentRepository;
-    @Mock private ProductRepository productRepository;
-    @Mock private InventoryRepository inventoryRepository;
-    @Mock private BranchRepository branchRepository;
-    @Mock private AccountRepository accountRepository;
-    @Mock private WarrantyClaimRepository warrantyClaimRepository;
-    @Mock private RepairBookingRepository repairBookingRepository;
-    @Mock private SupportRepository supportRepository;
+    @Mock private ProductService productService;
+    @Mock private InventoryService inventoryService;
+    @Mock private BranchService branchService;
+    @Mock private AccountService accountService;
+    @Mock private WarrantyService warrantyService;
+    @Mock private RepairBookingService repairBookingService;
     @Mock private StringRedisTemplate redisTemplate;
     @Mock private ValueOperations<String, String> valueOps;
     @Mock private ListOperations<String, String> listOps;
@@ -83,7 +81,7 @@ class BackendUpgradesTest {
     }
 
     @Test
-    void adminDashboardServiceAggregatesRevenueLowStockAndDelegatesCleanlyToController() {
+    void adminDashboardServiceAggregatesViaModuleServiceContracts() {
         Categories laptopCat = new Categories();
         laptopCat.setGroupType("LAPTOP");
 
@@ -127,18 +125,16 @@ class BackendUpgradesTest {
 
         when(ordersRepository.findAllWithItemsForDashboard()).thenReturn(List.of(paidOrder));
         when(paymentRepository.findAll()).thenReturn(List.of(sepayTx));
-        when(inventoryRepository.findAll()).thenReturn(List.of(lowInv));
-        when(branchRepository.findByActiveTrueOrderByIdAsc()).thenReturn(List.of(branch));
-        when(productRepository.count()).thenReturn(16L);
-        when(accountRepository.count()).thenReturn(3L);
-        when(warrantyClaimRepository.findAll()).thenReturn(List.of());
-        when(repairBookingRepository.findAll()).thenReturn(List.of());
-        when(supportRepository.findAll()).thenReturn(List.of());
+        when(inventoryService.findAllInventories()).thenReturn(List.of(lowInv));
+        when(branchService.findActiveBranchEntities()).thenReturn(List.of(branch));
+        when(productService.countTotalProducts()).thenReturn(16L);
+        when(accountService.countTotalAccounts()).thenReturn(3L);
+        when(warrantyService.countPendingClaims()).thenReturn(1L);
+        when(repairBookingService.countPendingBookings()).thenReturn(2L);
 
-        IAdminDashboardService service = new IAdminDashboardService(
-                ordersRepository, paymentRepository, productRepository, inventoryRepository,
-                branchRepository, accountRepository,
-                warrantyClaimRepository, repairBookingRepository, supportRepository
+        AdminDashboardServiceImpl service = new AdminDashboardServiceImpl(
+                ordersRepository, paymentRepository, productService, inventoryService,
+                branchService, accountService, warrantyService, repairBookingService
         );
         AdminDashboardController controller = new AdminDashboardController(service);
 
@@ -147,5 +143,7 @@ class BackendUpgradesTest {
         assertThat(summary.get("completedOrders")).isEqualTo(1L);
         assertThat(summary.get("lowStockCount")).isEqualTo(1L);
         assertThat(summary.get("totalProducts")).isEqualTo(16L);
+        assertThat(summary.get("pendingWarranties")).isEqualTo(1L);
+        assertThat(summary.get("pendingRepairs")).isEqualTo(2L);
     }
 }

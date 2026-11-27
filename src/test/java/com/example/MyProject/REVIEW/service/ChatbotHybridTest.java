@@ -4,9 +4,9 @@ import com.example.MyProject.PRODUCT.entity.Brands;
 import com.example.MyProject.PRODUCT.entity.Categories;
 import com.example.MyProject.PRODUCT.entity.Inventory;
 import com.example.MyProject.PRODUCT.entity.Products;
-import com.example.MyProject.PRODUCT.repository.InventoryRepository;
-import com.example.MyProject.PRODUCT.repository.ProductRepository;
-import com.example.MyProject.REVIEW.service.ipml.IChatbootService;
+import com.example.MyProject.PRODUCT.service.InventoryService;
+import com.example.MyProject.PRODUCT.service.ProductService;
+import com.example.MyProject.REVIEW.service.impl.ChatbotServiceImpl;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -41,14 +41,14 @@ class ChatbotHybridTest {
     private static final String GROQ_URL = "https://api.groq.com/openai/v1/chat/completions";
 
     @Mock
-    private ProductRepository productRepository;
+    private ProductService productService;
 
     @Mock
-    private InventoryRepository inventoryRepository;
+    private InventoryService inventoryService;
 
     private MockRestServiceServer mockServer;
     private ChatbotGuardrail guardrail;
-    private IChatbootService chatbotService;
+    private ChatbotServiceImpl chatbotService;
 
     @BeforeEach
     void setUp() {
@@ -56,7 +56,7 @@ class ChatbotHybridTest {
         mockServer = MockRestServiceServer.bindTo(builder).build();
         RestClient restClient = builder.build();
         guardrail = new ChatbotGuardrail();
-        chatbotService = new IChatbootService(productRepository, inventoryRepository, restClient, guardrail);
+        chatbotService = new ChatbotServiceImpl(productService, inventoryService, restClient, guardrail);
     }
 
     @Test
@@ -67,7 +67,7 @@ class ChatbotHybridTest {
 
         assertThat(reply).contains("HK COMPUTER");
         assertThat(reply.toLowerCase()).doesNotContain("cellphones");
-        verify(productRepository, never()).findAllWithBrandAndCategory();
+        verify(productService, never()).findAllCatalogProductsWithBrandAndCategory();
         mockServer.verify();
     }
 
@@ -79,7 +79,7 @@ class ChatbotHybridTest {
 
         assertThat(reply).contains("HK COMPUTER");
         assertThat(reply.toLowerCase()).doesNotContain("system prompt");
-        verify(productRepository, never()).findAllWithBrandAndCategory();
+        verify(productService, never()).findAllCatalogProductsWithBrandAndCategory();
         mockServer.verify();
     }
 
@@ -92,7 +92,7 @@ class ChatbotHybridTest {
 
         assertThat(reply1).contains("HK COMPUTER").doesNotContain("từ khóa \"lam\"");
         assertThat(reply2).contains("HK COMPUTER").doesNotContain("từ khóa \"lam\"");
-        assertThat(reply1).contains("checkout.html").contains("warranty.html").contains("support.html");
+        assertThat(reply1).contains("checkout.html").contains("warranty.html").contains("index.html#repair-center");
     }
 
     @Test
@@ -106,9 +106,9 @@ class ChatbotHybridTest {
         Products dellCheap = createProduct(3L, "Laptop Dell Inspiron 15", "Dell", "Laptop",
                 new BigDecimal("17500000"), "i5 / 8GB / 512GB", "Laptop bền bỉ");
 
-        when(productRepository.findAllWithBrandAndCategory())
+        when(productService.findAllCatalogProductsWithBrandAndCategory())
                 .thenReturn(List.of(asusCheap, asusExpensive, dellCheap));
-        when(inventoryRepository.findByProducts_IdIn(anyList()))
+        when(inventoryService.findInventoriesByProductIds(anyList()))
                 .thenReturn(List.of(createInventory(asusCheap, 7)));
 
         String reply = chatbotService.chat("Shop có laptop Asus dưới 20 triệu không?");
@@ -130,8 +130,8 @@ class ChatbotHybridTest {
         Products screwdriver = createProduct(12L, "tô vít tháo máy", "HK", "Dụng cụ",
                 new BigDecimal("10000"), "Thép cứng", "có thể mở tất cả loại laptop hiện nay");
 
-        when(productRepository.findAllWithBrandAndCategory()).thenReturn(List.of(cloth, screwdriver));
-        when(inventoryRepository.findByProducts_IdIn(anyList()))
+        when(productService.findAllCatalogProductsWithBrandAndCategory()).thenReturn(List.of(cloth, screwdriver));
+        when(inventoryService.findInventoriesByProductIds(anyList()))
                 .thenReturn(List.of(createInventory(cloth, 8), createInventory(screwdriver, 195)));
 
         String reply = chatbotService.chat("máy bán đắt nhất shop là");
@@ -149,8 +149,8 @@ class ChatbotHybridTest {
         Products screwdriver = createProduct(12L, "tô vít tháo máy", "HK", "Dụng cụ",
                 new BigDecimal("10000"), "Thép cứng", "có thể mở tất cả loại laptop hiện nay");
 
-        when(productRepository.findAllWithBrandAndCategory()).thenReturn(List.of(cloth, screwdriver));
-        when(inventoryRepository.findByProducts_IdIn(anyList())).thenReturn(List.of(createInventory(cloth, 8)));
+        when(productService.findAllCatalogProductsWithBrandAndCategory()).thenReturn(List.of(cloth, screwdriver));
+        when(inventoryService.findInventoriesByProductIds(anyList())).thenReturn(List.of(createInventory(cloth, 8)));
 
         String reply = chatbotService.chat("tôi mua khăn mở trang thanh toán sepay đi");
 
@@ -166,8 +166,8 @@ class ChatbotHybridTest {
 
         Products mouse = createProduct(10L, "Chuột Logitech G304", "Logitech", "Chuột",
                 new BigDecimal("790000"), "Không dây Lightspeed", "Chuột không dây");
-        when(productRepository.findAllWithBrandAndCategory()).thenReturn(List.of(mouse));
-        when(inventoryRepository.findByProducts_IdIn(anyList())).thenReturn(List.of(createInventory(mouse, 0)));
+        when(productService.findAllCatalogProductsWithBrandAndCategory()).thenReturn(List.of(mouse));
+        when(inventoryService.findInventoriesByProductIds(anyList())).thenReturn(List.of(createInventory(mouse, 0)));
 
         String stockReply = chatbotService.chat("Chuột Logitech G304 còn hàng không?");
         assertThat(stockReply).contains("Chuột Logitech G304").contains("Tạm hết hàng");
@@ -179,7 +179,7 @@ class ChatbotHybridTest {
                 .contains("warranty.html");
 
         String repairReply = chatbotService.chat("Mình muốn đặt lịch sửa chữa laptop tận nơi");
-        assertThat(repairReply).contains("tận nơi").contains("support.html");
+        assertThat(repairReply).contains("tận nơi").contains("index.html#repair-center");
 
         String paymentReply = chatbotService.chat("Thanh toán qua SePay VietQR thế nào?");
         assertThat(paymentReply).contains("VietQR SePay").contains("checkout.html");
@@ -191,8 +191,8 @@ class ChatbotHybridTest {
 
         Products laptop = createProduct(5L, "Laptop Asus Vivobook 15", "Asus", "Laptop",
                 new BigDecimal("15990000"), "Core i5 / 16GB", "Laptop văn phòng");
-        when(productRepository.findAllWithBrandAndCategory()).thenReturn(List.of(laptop));
-        when(inventoryRepository.findByProducts_IdIn(anyList())).thenReturn(List.of(createInventory(laptop, 4)));
+        when(productService.findAllCatalogProductsWithBrandAndCategory()).thenReturn(List.of(laptop));
+        when(inventoryService.findInventoriesByProductIds(anyList())).thenReturn(List.of(createInventory(laptop, 4)));
 
         mockServer.expect(requestTo(GROQ_URL))
                 .andExpect(method(HttpMethod.POST))
@@ -217,8 +217,8 @@ class ChatbotHybridTest {
 
         Products laptop = createProduct(5L, "Laptop Asus Vivobook 15", "Asus", "Laptop",
                 new BigDecimal("15990000"), "Core i5 / 16GB", "Laptop văn phòng");
-        when(productRepository.findAllWithBrandAndCategory()).thenReturn(List.of(laptop));
-        when(inventoryRepository.findByProducts_IdIn(anyList())).thenReturn(List.of(createInventory(laptop, 4)));
+        when(productService.findAllCatalogProductsWithBrandAndCategory()).thenReturn(List.of(laptop));
+        when(inventoryService.findInventoriesByProductIds(anyList())).thenReturn(List.of(createInventory(laptop, 4)));
 
         mockServer.expect(requestTo(GROQ_URL))
                 .andExpect(method(HttpMethod.POST))
@@ -244,8 +244,8 @@ class ChatbotHybridTest {
 
         Products laptop = createProduct(5L, "Laptop Asus Vivobook 15", "Asus", "Laptop",
                 new BigDecimal("15990000"), "Core i5 / 16GB", "Laptop văn phòng");
-        when(productRepository.findAllWithBrandAndCategory()).thenReturn(List.of(laptop));
-        when(inventoryRepository.findByProducts_IdIn(anyList())).thenReturn(List.of(createInventory(laptop, 4)));
+        when(productService.findAllCatalogProductsWithBrandAndCategory()).thenReturn(List.of(laptop));
+        when(inventoryService.findInventoriesByProductIds(anyList())).thenReturn(List.of(createInventory(laptop, 4)));
 
         mockServer.expect(requestTo(GROQ_URL))
                 .andExpect(method(HttpMethod.POST))
@@ -267,8 +267,8 @@ class ChatbotHybridTest {
 
         Products laptop = createProduct(5L, "Laptop Asus Vivobook 15", "Asus", "Laptop",
                 new BigDecimal("15990000"), "Core i5 / 16GB", "Laptop văn phòng");
-        when(productRepository.findAllWithBrandAndCategory()).thenReturn(List.of(laptop));
-        when(inventoryRepository.findByProducts_IdIn(anyList())).thenReturn(List.of(createInventory(laptop, 4)));
+        when(productService.findAllCatalogProductsWithBrandAndCategory()).thenReturn(List.of(laptop));
+        when(inventoryService.findInventoriesByProductIds(anyList())).thenReturn(List.of(createInventory(laptop, 4)));
 
         mockServer.expect(requestTo(GROQ_URL)).andRespond(withStatus(HttpStatus.TOO_MANY_REQUESTS));
         mockServer.expect(requestTo(GROQ_URL)).andRespond(withStatus(HttpStatus.TOO_MANY_REQUESTS));
@@ -303,8 +303,8 @@ class ChatbotHybridTest {
         Inventory invDn = createInventory(dell5500, 0);
         invDn.setBranch(dn);
 
-        when(productRepository.findAllWithBrandAndCategory()).thenReturn(List.of(dell5500));
-        when(inventoryRepository.findByProducts_IdIn(anyList())).thenReturn(List.of(invHn, invDn));
+        when(productService.findAllCatalogProductsWithBrandAndCategory()).thenReturn(List.of(dell5500));
+        when(inventoryService.findInventoriesByProductIds(anyList())).thenReturn(List.of(invHn, invDn));
 
         String replyHn = chatbotService.chat("Dell Latitude 5500 ở Hà Nội còn hàng không?");
         assertThat(replyHn).contains("Còn 7 sản phẩm tại Hà Nội");
