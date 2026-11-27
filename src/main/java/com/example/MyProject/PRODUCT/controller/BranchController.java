@@ -1,7 +1,7 @@
 package com.example.MyProject.PRODUCT.controller;
 
-import com.example.MyProject.PRODUCT.common.ApiResponse;
-import com.example.MyProject.PRODUCT.common.BaseController;
+import com.example.MyProject.common.ApiResponse;
+import com.example.MyProject.common.BaseController;
 import com.example.MyProject.PRODUCT.dto.branch.BranchRequest;
 import com.example.MyProject.PRODUCT.dto.branch.BranchResponse;
 import com.example.MyProject.PRODUCT.service.BranchService;

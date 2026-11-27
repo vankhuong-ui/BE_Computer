@@ -1,6 +1,6 @@
 package com.example.MyProject.AUTH.exception;
 
-import com.example.MyProject.AUTH.common.ApiResponse;
+import com.example.MyProject.common.ApiResponse;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;

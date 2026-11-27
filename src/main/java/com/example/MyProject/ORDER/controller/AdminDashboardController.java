@@ -1,7 +1,7 @@
 package com.example.MyProject.ORDER.controller;
 
-import com.example.MyProject.ORDER.common.ApiResponse;
-import com.example.MyProject.ORDER.common.BaseController;
+import com.example.MyProject.common.ApiResponse;
+import com.example.MyProject.common.BaseController;
 import com.example.MyProject.ORDER.service.AdminDashboardService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.access.prepost.PreAuthorize;

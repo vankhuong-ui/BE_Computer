@@ -1,6 +1,5 @@
 package com.example.MyProject.REVIEW.mapper;
 
-
 import com.example.MyProject.REVIEW.dto.review.CreateReviewRequest;
 import com.example.MyProject.REVIEW.dto.review.ReviewResponse;
 import com.example.MyProject.REVIEW.entity.Review;
@@ -15,6 +14,8 @@ public interface ReviewMapper {
     @Mapping(source = "product.id", target = "productId")
     ReviewResponse toResponse(Review review);
 
+    @Mapping(target = "id", ignore = true)
+    @Mapping(target = "createdAt", ignore = true)
     @Mapping(target = "product", ignore = true)
     @Mapping(target = "order", ignore = true)
     Review toEntity(CreateReviewRequest request);

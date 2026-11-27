@@ -1,11 +1,11 @@
 package com.example.MyProject.ORDER.controller;
 
-import com.example.MyProject.ORDER.common.ApiResponse;
-import com.example.MyProject.ORDER.common.BaseController;
+import com.example.MyProject.common.ApiResponse;
+import com.example.MyProject.common.BaseController;
 import com.example.MyProject.ORDER.dto.orders.OrdersRequest;
 import com.example.MyProject.ORDER.dto.orders.OrdersResponse;
 import com.example.MyProject.ORDER.service.OrdersService;
-import com.example.MyProject.PRODUCT.common.ProcessPageable;
+import com.example.MyProject.common.ProcessPageable;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;

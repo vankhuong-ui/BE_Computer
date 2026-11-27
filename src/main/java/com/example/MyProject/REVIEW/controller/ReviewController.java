@@ -1,7 +1,7 @@
 package com.example.MyProject.REVIEW.controller;
 
-import com.example.MyProject.ORDER.common.ApiResponse;
-import com.example.MyProject.ORDER.common.BaseController;
+import com.example.MyProject.common.ApiResponse;
+import com.example.MyProject.common.BaseController;
 import com.example.MyProject.REVIEW.dto.review.CreateReviewRequest;
 import com.example.MyProject.REVIEW.dto.review.ReviewResponse;
 import com.example.MyProject.REVIEW.service.ReviewService;

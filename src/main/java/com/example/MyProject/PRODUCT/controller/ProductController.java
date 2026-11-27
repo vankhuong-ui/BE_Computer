@@ -1,8 +1,8 @@
 package com.example.MyProject.PRODUCT.controller;
 
-import com.example.MyProject.PRODUCT.common.ApiResponse;
-import com.example.MyProject.PRODUCT.common.BaseController;
-import com.example.MyProject.PRODUCT.common.ProcessPageable;
+import com.example.MyProject.common.ApiResponse;
+import com.example.MyProject.common.BaseController;
+import com.example.MyProject.common.ProcessPageable;
 import com.example.MyProject.PRODUCT.dto.product.request.RequestProduct;
 import com.example.MyProject.PRODUCT.dto.product.response.ResponseProduct;
 import com.example.MyProject.PRODUCT.dto.product.response.ResponseSearchProduct;

@@ -6,6 +6,7 @@ import com.example.MyProject.AUTH.repository.AccountRepository;
 import com.example.MyProject.AUTH.repository.RefreshTokenRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.security.authentication.BadCredentialsException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -42,7 +43,7 @@ public class RefreshTokenService {
         if (refreshToken.getExpiryDate().compareTo(Instant.now()) < 0) {
             refreshToken.setRevoked(true);
             refreshTokenRepository.save(refreshToken);
-            throw new RuntimeException("Refresh token expiry!");
+            throw new BadCredentialsException("Refresh token expiry!");
         }
         return refreshToken;
     }

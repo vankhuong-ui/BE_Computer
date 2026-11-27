@@ -1,6 +1,6 @@
 package com.example.MyProject.REVIEW.dto.repair;
 
-import com.example.MyProject.AUTH.common.PhoneValidator;
+import com.example.MyProject.common.PhoneValidator;
 import jakarta.validation.constraints.Pattern;
 
 public record RepairBookingRequest(

@@ -1,7 +1,7 @@
 package com.example.MyProject.AUTH.controller;
 
-import com.example.MyProject.AUTH.common.ApiResponse;
-import com.example.MyProject.AUTH.common.BaseController;
+import com.example.MyProject.common.ApiResponse;
+import com.example.MyProject.common.BaseController;
 import com.example.MyProject.AUTH.dto.auth.request.AccountRequest;
 import com.example.MyProject.AUTH.dto.auth.request.LoginRequest;
 import com.example.MyProject.AUTH.dto.auth.response.AccountResponse;
@@ -45,7 +45,7 @@ public class AccountController extends BaseController {
                 ? Sort.by(sortBy).ascending()
                 : Sort.by(sortBy).descending();
         Pageable pageable = PageRequest.of(page, size, sort);
-        return ApiResponse.succcess(accountService.listAccount(pageable));
+        return ApiResponse.successData(accountService.listAccount(pageable));
     }
 
     @PutMapping("/{id}/enable")
@@ -61,7 +61,7 @@ public class AccountController extends BaseController {
             @RequestParam(required = false) String accountname,
             @RequestParam(required = false) String gmail
     ) {
-        return creatSucessTRessponsWithmessage(
+        return createSuccessWithMessage(
                 "Đã tìm thấy Account!",
                 accountService.searchByEmail(accountname, gmail)
         );
@@ -81,14 +81,14 @@ public class AccountController extends BaseController {
         AuthSessionResult session = accountService.authenticateAndCreateSession(loginRequest);
         ResponseCookie cookie = buildRefreshCookie(session.refreshToken(), REFRESH_COOKIE_MAX_AGE);
         response.addHeader("Set-Cookie", cookie.toString());
-        return ResponseEntity.ok(ApiResponse.succcessWithmessage("Đăng nhập thành công", session.account()));
+        return ResponseEntity.ok(ApiResponse.successData("Đăng nhập thành công", session.account()));
     }
 
     @PostMapping("/refresh-token")
     public ApiResponse<Map<String, String>> refreshToken(
             @CookieValue(value = "refreshToken", required = false) String refreshTokenStr
     ) {
-        return ApiResponse.succcess(accountService.refreshAccessToken(refreshTokenStr));
+        return ApiResponse.successData(accountService.refreshAccessToken(refreshTokenStr));
     }
 
     @PostMapping("/logout")
@@ -103,7 +103,7 @@ public class AccountController extends BaseController {
         accountService.logoutSession(refreshTokenStr);
         ResponseCookie deleteCookie = buildRefreshCookie("", 0);
         response.addHeader("Set-Cookie", deleteCookie.toString());
-        return ApiResponse.succcess(new ResponseEntity<>(Map.of("message", "Logout Successfully"), HttpStatus.OK));
+        return ApiResponse.successData(new ResponseEntity<>(Map.of("message", "Logout Successfully"), HttpStatus.OK));
     }
 
     @PostMapping("/set-gg-password")
@@ -130,7 +130,7 @@ public class AccountController extends BaseController {
         AuthSessionResult session = accountService.verifyCodeAndCreateSession(gmail, code);
         ResponseCookie cookie = buildRefreshCookie(session.refreshToken(), REFRESH_COOKIE_MAX_AGE);
         response.addHeader("Set-Cookie", cookie.toString());
-        return creatSucessTRessponsWithmessage("Xác thực mã thành công", session.account());
+        return createSuccessWithMessage("Xác thực mã thành công", session.account());
     }
 
     @PutMapping("/forgot-password")
@@ -140,13 +140,13 @@ public class AccountController extends BaseController {
             @RequestParam String newPassword
     ) {
         AccountResponse account = accountService.resetForgotPassword(gmail, code, newPassword);
-        return creatSucessTRessponsWithmessage("Đổi mật khẩu thành công", account);
+        return createSuccessWithMessage("Đổi mật khẩu thành công", account);
     }
 
     @GetMapping("/check-password")
     public ApiResponse<Map<String, Boolean>> checkPasswordExists() {
         boolean hasPassword = accountService.hasPassword();
-        return creatSucessTRessponsWithmessage("Check password success!", Map.of("hasPassword", hasPassword));
+        return createSuccessWithMessage("Check password success!", Map.of("hasPassword", hasPassword));
     }
 
     private ResponseCookie buildRefreshCookie(String token, long maxAgeSeconds) {

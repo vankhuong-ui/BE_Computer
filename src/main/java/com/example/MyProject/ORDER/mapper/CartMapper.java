@@ -6,9 +6,9 @@ import com.example.MyProject.ORDER.entity.Cart;
 import com.example.MyProject.PRODUCT.mapper.ProductMapper;
 import org.mapstruct.Mapper;
 import org.mapstruct.Mapping;
-import org.mapstruct.MappingTarget;
+import org.mapstruct.ReportingPolicy;
 
-@Mapper(componentModel = "spring",uses = ProductMapper.class)
+@Mapper(componentModel = "spring", uses = ProductMapper.class, unmappedTargetPolicy = ReportingPolicy.IGNORE)
 public interface CartMapper {
     @Mapping(source = "accountId", target = "account.id")
     @Mapping(source = "cartRequest.productId", target = "products.id")

@@ -1,13 +1,13 @@
 package com.example.MyProject.ORDER.controller;
 
-import com.example.MyProject.ORDER.common.ApiResponse;
-import com.example.MyProject.ORDER.common.BaseController;
+import com.example.MyProject.common.ApiResponse;
+import com.example.MyProject.common.BaseController;
 import com.example.MyProject.ORDER.dto.payment.PaymentResponse;
 import com.example.MyProject.ORDER.dto.payment.SePayPaymentInfoResponse;
 import com.example.MyProject.ORDER.dto.payment.SePayWebhookRequest;
 import com.example.MyProject.ORDER.dto.payment.VerifyPaymentRequest;
 import com.example.MyProject.ORDER.service.PaymentService;
-import com.example.MyProject.PRODUCT.common.ProcessPageable;
+import com.example.MyProject.common.ProcessPageable;
 import jakarta.servlet.http.HttpServletRequest;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;

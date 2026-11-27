@@ -1,7 +1,6 @@
 package com.example.MyProject.ORDER.mapper;
 
 import com.example.MyProject.ORDER.dto.orderItem.OrderItemResponse;
-import com.example.MyProject.ORDER.dto.orders.OrdersRequest;
 import com.example.MyProject.ORDER.dto.orders.OrdersResponse;
 import com.example.MyProject.ORDER.entity.OrderItem;
 import com.example.MyProject.ORDER.entity.Orders;
@@ -16,11 +15,6 @@ import org.mapstruct.NullValuePropertyMappingStrategy;
         nullValuePropertyMappingStrategy = NullValuePropertyMappingStrategy.IGNORE
 )
 public interface OrdersMapper {
-
-    @Mapping(source = "AddressesId", target = "useraddresses.id")
-    @Mapping(target = "orderItems", source = "orderItems")
-    @Mapping(target = "paidAt", ignore = true)
-    Orders toEntity(OrdersRequest ordersRequest);
 
     @Mapping(source = "useraddresses.id", target = "AddressesId")
     @Mapping(source = "pickupBranch.id", target = "pickupBranchId")
