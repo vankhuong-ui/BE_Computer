@@ -6,9 +6,9 @@ Tài liệu này mô tả luồng đồng bộ giỏ hàng hai tầng (PostgreSQ
 
 ## 1. Các thành phần tham gia trong Code
 
-- **Giỏ hàng:** `CartController.java`, `ICartService.java`, `IRedisCartService.java`, `CartRepository.java`
-- **Tồn kho & Chi nhánh:** `BranchController.java`, `BranchService.java`, `IBranchService.java`, `InventoryController.java`, `IInventoryService.java`, `InventoryWebSocketService.java`
-- **Đơn hàng & Cron:** `OrderController.java`, `IOrdersService.java`, `OrderExpirationScheduler.java`, `OrderNotificationService.java`, `OrdersRepository.java`
+- **Giỏ hàng:** `CartController.java`, `CartServiceImpl.java`, `RedisCartServiceImpl.java`, `CartRepository.java`
+- **Tồn kho & Chi nhánh (PRODUCT Service Contracts):** `BranchController.java`, `BranchService.java`, `BranchServiceImpl.java`, `InventoryController.java`, `InventoryService.java`, `InventoryServiceImpl.java`
+- **Đơn hàng & Cron:** `OrderController.java`, `OrdersServiceImpl.java` (giao tiếp với `AUTH`/`PRODUCT` hoàn toàn qua `UseraddressService`, `ProductService`, `BranchService`, `InventoryService`), `OrderExpirationScheduler.java`, `OrderNotificationService.java`, `OrdersRepository.java`
 - **Frontend:** `cart.html`, `checkout.html`, `order.html`, `admin-inventory.html`, `admin-orders.html`
 
 ---
@@ -23,7 +23,7 @@ Tài liệu này mô tả luồng đồng bộ giỏ hàng hai tầng (PostgreSQ
 
 ---
 
-## 3. Luồng Đặt hàng Đa cơ sở & Áp dụng Voucher (`POST /api/orders/create`)
+## 3. Luồng Đặt hàng Kho 3 Chi Nhánh Trọng Điểm (`POST /api/orders/create`)
 
 ```mermaid
 flowchart TD
@@ -39,37 +39,29 @@ flowchart TD
     E2 --> E3["3. Cơ sở còn tồn kho dồi dào nhất toàn quốc"]
     E3 --> F["Trừ kho nguyên tử tại cơ sở được chọn & lưu branch_id vào order_items"]
 
-    D -- "Thành công" --> G["Phát WebSocket /topic/inventory/{invId} cập nhật tổng tồn kho"]
-    F --> G
-
-    G --> H{"Có nhập mã Voucher?"}
-    H -- "Có" --> I["Kiểm tra: active, hạn dùng, usageLimit, minOrderAmount,<br/>firstOrderOnly (đơn đầu), mỗi tài khoản dùng tối đa 1 lần"]
-    I -- "Hợp lệ" --> J["Tính discountAmount & tăng lượt dùng nguyên tử SQL<br/>(voucherRepository.incrementUsageIfAvailable chống vượt trần)"]
-    H -- "Không" --> K["discountAmount = 0"]
-    J --> L["Lưu Orders (status = UNPAID) & tự động xóa SP đã đặt khỏi Giỏ hàng (DB + Redis)"]
-    K --> L
-    L --> M["Chuyển sang bước Thanh toán (SePay VietQR / VNPay / Thanh toán sau)"]
+    D -- "Thành công" --> L["Lưu Orders (status = UNPAID) & tự động xóa SP đã đặt khỏi Giỏ hàng (DB + Redis)"]
+    F --> L
+    L --> M["Chuyển sang bước Thanh toán (SePay VietQR / VNPay / COD)"]
 ```
 
 ---
 
 ## 4. Vòng đời Trạng thái Đơn hàng, Hủy Đơn Treo Tự Động (>30 phút) & Hoàn kho
 
-- **Cron tự động dọn đơn treo (`OrderExpirationScheduler.java`):** Chạy định kỳ mỗi `5 phút`, tự động tìm các đơn `UNPAID` quá `30 phút` kể từ lúc tạo và gọi `ordersService.updateStatus(id, "CANCELLED")` để giải phóng tồn kho chi nhánh và lượt Voucher bị chiếm giữ.
+- **Cron tự động dọn đơn treo (`OrderExpirationScheduler.java`):** Chạy định kỳ mỗi `5 phút`, tự động tìm các đơn `UNPAID` quá `30 phút` kể từ lúc tạo và gọi `ordersService.updateStatus(id, "CANCELLED")` để giải phóng tồn kho chi nhánh bị chiếm giữ.
 
 ```mermaid
 stateDiagram-v2
-    [*] --> UNPAID : Tạo đơn (Đã giữ tồn kho & lượt Voucher)
+    [*] --> UNPAID : Tạo đơn (Đã giữ tồn kho chi nhánh)
     UNPAID --> COMPLETED : SePay Webhook / VNPay xác nhận / Admin duyệt
-    UNPAID --> CANCELLED : Khách tự hủy hoặc Admin hủy đơn
+    UNPAID --> CANCELLED : Khách tự hủy, quá hạn 30 phút hoặc Admin hủy đơn
     COMPLETED --> CANCELLED : Admin hủy đơn đặc biệt
 
     note right of CANCELLED
         Tự động gọi restoreStockForOrder():
         1. Cộng trả số lượng về đúng branch_id của từng OrderItem
-        2. Phát WebSocket cập nhật lại tồn kho trên UI
-        3. Giảm voucher.usedCount đi 1 (hoàn lượt mã giảm giá)
-        4. Chốt cứng trạng thái (không cho đổi ngược từ CANCELLED)
+        2. Giảm selled tương ứng tại kho chi nhánh
+        3. Chốt cứng trạng thái (không cho đổi ngược từ CANCELLED)
     end note
 ```
 
@@ -77,7 +69,7 @@ stateDiagram-v2
 
 ## 5. Nghiệp vụ Quản trị Kho Đa Cơ Sở dành cho Admin
 
-Trong `IInventoryService.java` và `admin-inventory.html`, Admin có 4 công cụ điều phối hàng hóa trên toàn hệ thống chi nhánh:
+Trong `InventoryServiceImpl.java` và `admin-inventory.html`, Admin có 4 công cụ điều phối hàng hóa trên toàn hệ thống chi nhánh:
 1. **Khởi tạo / Nhập kho hàng loạt (`POST /api/inventory/create`):** Nhập hàng vào 1 cơ sở cụ thể hoặc bật cờ `allBranches = true` để phân bổ đồng loạt cho tất cả cơ sở đang hoạt động.
 2. **Nhập thêm hàng (`PUT /api/inventory/{id}/soluong`):** Cộng dồn lượng hàng mới về kho chi nhánh.
 3. **Kiểm kê điều chỉnh (`PUT /api/inventory/{id}/adjust`):** Chốt lại con số tồn kho thực tế sau kiểm kê kho vật lý.

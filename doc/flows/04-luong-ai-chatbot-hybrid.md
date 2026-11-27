@@ -6,9 +6,9 @@ Tài liệu này mô tả kiến trúc **Hybrid Chatbot** của HK COMPUTER: k�
 
 ## 1. Các thành phần tham gia trong Code
 
-- **Controller & Config:** `REVIEW/controller/ChatController.java`, `REVIEW/config/RestClientConfig.java` (connect timeout `5s`, response timeout `15s`)
+- **Controller & Config:** `REVIEW/controller/ChatController.java`, `REVIEW/config/RestClientConfig.java` (JDK 21 `JdkClientHttpRequestFactory`: connect timeout `5s`, read timeout `15s`)
 - **Rào chắn nội dung:** `REVIEW/service/ChatbotGuardrail.java`
-- **Trái tim xử lý Hybrid:** `ChatbotService.java`, `REVIEW/service/ipml/IChatbootService.java`, `AUTH/service/RedisRateLimiterService.java` (giới hạn tần suất 15 câu/phút/phiên & lưu tối đa 6 lượt ngữ cảnh hội thoại gần nhất trong Redis với TTL 15 phút)
+- **Tách lớp Phân tích Sản phẩm & Trái tim xử lý Hybrid:** `ChatbotService.java`, `REVIEW/service/ChatbotCatalogMatcher.java` (gọi qua `ProductService` & `InventoryService` để bóc tách khoảng giá tiếng Việt, nhận diện thành phố/chi nhánh, chấm điểm khớp sản phẩm & gom tồn kho đa cơ sở), `REVIEW/service/impl/ChatbotServiceImpl.java`, `AUTH/service/RedisRateLimiterService.java` (giới hạn tần suất 15 câu/phút/phiên & lưu tối đa 6 lượt ngữ cảnh hội thoại gần nhất trong Redis với TTL 15 phút)
 - **Kiểm thử tự động:** `src/test/java/com/example/MyProject/REVIEW/service/ChatbotHybridTest.java` (12 kịch bản kiểm thử gồm tồn kho chi nhánh theo thành phố & 3 lớp Guardrails)
 - **Frontend Widget:** `FE_Computer/assets/js/chat-widget.js` (giao diện hiện đại có Quick Prompt Chips, hiệu ứng đang gõ 3 chấm, nút Làm mới hội thoại, lọc chống XSS & nút CTA sản phẩm/dịch vụ)
 
@@ -59,5 +59,5 @@ flowchart TD
 3. **Lớp 3 — Kiểm duyệt đầu ra (`sanitizeOutput`):** Trước khi phản hồi tới trình duyệt, Java quét lại toàn bộ câu trả lời của AI; nếu phát hiện lọt tên đối thủ, cụm từ bất lợi hoặc tên model nội bộ (`qwen`, `llama`, `groq`, `openai`, `gsk_`), hệ thống lập tức thay thế bằng `localFallbackReply` chuẩn xác từ CSDL.
 
 ### 3.3. Điều hướng Mua hàng 1-Click trên Giao diện Chat
-- Backend đính kèm các liên kết nội bộ dạng `[Xem & mua <Tên SP>](detailproductuser.html?id=...)`, `[Đi tới trang thanh toán](checkout.html)`, `[Tra cứu bảo hành](warranty.html)`, `[Đặt lịch sửa chữa](support.html)`.
+- Backend đính kèm các liên kết nội bộ dạng `[Xem & mua <Tên SP>](detailproductuser.html?id=...)`, `[Đi tới trang thanh toán](checkout.html)`, `[Tra cứu bảo hành](warranty.html)`, `[Đặt lịch sửa chữa](index.html#repair-center)`.
 - Trên Frontend (`chat-widget.js`), hàm `formatMessage()` thực hiện **escape HTML chống XSS trước**, sau đó chỉ cho phép biến đổi các đường dẫn thuộc whitelist nội bộ của cửa hàng thành nút bấm `.ai-action-link` để khách chuyển trang mua hàng và quét mã SePay ngay.

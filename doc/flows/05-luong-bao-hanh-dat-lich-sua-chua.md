@@ -1,15 +1,14 @@
-# Luồng 05 — Bảo Hành Điện Tử, Đặt Lịch Sửa Chữa, Đánh Giá & Hỗ Trợ
+# Luồng 05 — Bảo Hành Điện Tử, Đặt Lịch Sửa Chữa & Đánh Giá Sản Phẩm
 
-Tài liệu này mô tả các luồng dịch vụ kỹ thuật và chăm sóc sau bán hàng của **HK COMPUTER**: tra cứu thẻ bảo hành tính từ dữ liệu đơn hàng đã thanh toán, yêu cầu bảo hành, đặt lịch sửa chữa (tại cửa hàng hoặc tận nơi), đánh giá sản phẩm đã mua và phiếu hỗ trợ trực tuyến.
+Tài liệu này mô tả các luồng dịch vụ kỹ thuật và chăm sóc sau bán hàng của **HK COMPUTER**: tra cứu thẻ bảo hành tính từ dữ liệu đơn hàng đã thanh toán, yêu cầu bảo hành, đặt lịch sửa chữa (tại cửa hàng hoặc tận nơi) và đánh giá sản phẩm xác thực mua hàng.
 
 ---
 
 ## 1. Các thành phần tham gia trong Code
 
-- **Bảo hành điện tử:** `WarrantyController.java`, `IWarrantyService.java`, `WarrantyClaimRepository.java`, `WarrantyClaim.java`, `warranty.html` (hiển thị thanh tiến trình thời hạn bảo hành + timeline 4 bước), `admin-warranty.html` (bộ lọc trạng thái, tìm nhanh & mẫu ghi chú KTV)
-- **Đặt lịch sửa chữa:** `RepairBookingController.java`, `IRepairBookingService.java`, `RepairBookingRepository.java`, `RepairBooking.java`, `profile.html` (timeline 4 bước theo dõi tiến độ sửa chữa), `admin-repairs.html` (bộ lọc hình thức `AT_STORE`/`AT_HOME`, trạng thái & mẫu ghi chú KTV)
-- **Đánh giá sản phẩm:** `ReviewController.java`, `IReviewService.java`, `ReviewRepository.java`, `detailproductuser.html`, `order.html`, `review.html`
-- **Hỗ trợ khách hàng:** `SupportController.java`, `ISupportService.java`, `SupportRepository.java`, `support.html`, `admin-support.html`
+- **Bảo hành điện tử:** `WarrantyController.java`, `REVIEW/service/impl/WarrantyServiceImpl.java` (sử dụng hợp đồng `OrdersService`), `WarrantyClaimRepository.java`, `WarrantyClaim.java`, `warranty.html` (hiển thị thanh tiến trình thời hạn bảo hành + timeline 4 bước), `admin-warranty.html` (bộ lọc trạng thái, tìm nhanh & mẫu ghi chú KTV)
+- **Đặt lịch sửa chữa:** `RepairBookingController.java`, `REVIEW/service/impl/RepairBookingServiceImpl.java` (sử dụng hợp đồng `BranchService`), `RepairBookingRepository.java`, `RepairBooking.java`, `index.html#repair-center` (`home-repair.js` & `quick-repair-modal.js`), `profile.html` (timeline 4 bước theo dõi tiến độ sửa chữa), `admin-repairs.html` (bộ lọc hình thức `AT_STORE`/`AT_HOME`, trạng thái & mẫu ghi chú KTV)
+- **Đánh giá sản phẩm:** `ReviewController.java`, `REVIEW/service/impl/ReviewServiceImpl.java` (sử dụng hợp đồng `OrdersService` & `ProductService`), `ReviewRepository.java`, `detailproductuser.html`, `order.html`, `review.html`
 
 ---
 
@@ -34,7 +33,7 @@ sequenceDiagram
     participant DB as PostgreSQL (orders, warranty_claims)
 
     U->>BE: POST /api/warranty/claims { orderId, productId, unitNumber, issueType, description, contactPhone }
-    BE->>BE: Kiểm tra SĐT 10 số (PhoneValidator)
+    BE->>BE: Kiểm tra SĐT 10 số (common.PhoneValidator)
     BE->>DB: 1. Kiểm tra đơn thuộc tài khoản & status == COMPLETED/PAID
     BE->>DB: 2. Kiểm tra sản phẩm, unitNumber nằm trong số lượng đã mua & chưa hết hạn
     BE->>DB: 3. Chặn phiếu đang xử lý trùng trên cùng thiết bị
@@ -50,7 +49,7 @@ sequenceDiagram
 
 ## 3. Luồng Đặt lịch Sửa chữa Kỹ thuật (`Repair Booking`)
 
-Hỗ trợ **cả khách vãng lai (chưa đăng nhập)** lẫn **khách đã đăng nhập** gửi yêu cầu đặt lịch:
+Hỗ trợ **cả khách vãng lai (chưa đăng nhập)** lẫn **khách đã đăng nhập** gửi yêu cầu đặt lịch ngay tại khu vực `#repair-center` trên trang chủ:
 
 ```mermaid
 flowchart TD
@@ -63,15 +62,12 @@ flowchart TD
     G --> H["Admin xác nhận và cập nhật tiến độ<br/>(PENDING -> CONFIRMED -> IN_PROGRESS -> COMPLETED / CANCELLED)"]
 ```
 
-Ngày hẹn phải là ngày hiện tại hoặc tương lai; giờ nhận `HH:mm` hoặc khoảng `HH:mm - HH:mm` và phải còn trong tương lai. Chi nhánh được đối chiếu với danh sách đang hoạt động, nhưng hiện chưa kiểm tra giờ mở cửa hoặc năng lực kỹ thuật viên/chặn trùng khung giờ. Lịch ở trạng thái `PENDING` mới là yêu cầu tiếp nhận, chưa giữ chỗ. Trạng thái chỉ chuyển theo thứ tự `PENDING -> CONFIRMED -> IN_PROGRESS -> COMPLETED`, có thể hủy trước khi hoàn tất.
+Ngày hẹn phải là ngày hiện tại hoặc tương lai; giờ nhận `HH:mm` hoặc khoảng `HH:mm - HH:mm` và phải còn trong tương lai. Chi nhánh được đối chiếu với danh sách 3 chi nhánh đang hoạt động. Trạng thái chỉ chuyển theo thứ tự `PENDING -> CONFIRMED -> IN_PROGRESS -> COMPLETED`, có thể hủy trước khi hoàn tất.
 
 ---
 
-## 4. Luồng Đánh giá Sản phẩm Đã mua (`Review`) & Hỗ trợ (`Support`)
+## 4. Luồng Đánh giá Sản phẩm Đã mua (`Review`)
 
-1. **Đánh giá sản phẩm xác thực mua hàng (`POST /api/reviews`):**
-   - Chỉ khách hàng **sở hữu đơn hàng** đó, đơn đã **`COMPLETED`/`PAID`**, sản phẩm thực sự nằm trong `order_items` của đơn và **chưa từng đánh giá** sản phẩm đó trong đơn (`existsByOrderIdAndProductId == false`) mới được phép gửi điểm sao (`1–5`) và nhận xét.
-   - Đánh giá hiển thị công khai trên trang chi tiết sản phẩm (`GET /api/reviews/product/{productId}`).
-2. **Phiếu hỗ trợ trực tuyến (`POST /api/support`):**
-   - Khách đăng nhập gửi chủ đề (`subject`) và nội dung cần tư vấn/khiếu nại (`message`), theo dõi danh sách tại `GET /api/support/my-requests`.
-   - Admin tiếp nhận và cập nhật trạng thái xử lý (`OPEN` → `IN_PROGRESS` → `CLOSED`) qua `PATCH /api/support/admin/{id}/status`.
+- **Đánh giá sản phẩm xác thực mua hàng (`POST /api/reviews`):**
+  - Chỉ khách hàng **sở hữu đơn hàng** đó, đơn đã **`COMPLETED`/`PAID`**, sản phẩm thực sự nằm trong `order_items` của đơn và **chưa từng đánh giá** sản phẩm đó trong đơn (`existsByOrderIdAndProductId == false`) mới được phép gửi điểm sao (`1–5`) và nhận xét.
+  - Đánh giá hiển thị công khai trên trang chi tiết sản phẩm (`GET /api/reviews/product/{productId}`).
